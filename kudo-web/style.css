@@ -1,0 +1,163 @@
+:root {
+    --bg-color: #1a1a1a;
+    --card-bg: #2a2a2a;
+    --text-main: #e0e0e0;
+    --text-dim: #909090;
+    --accent-red: #ff5555;   /* P1 */
+    --accent-yel: #f1fa8c;   /* P2 */
+    --accent-grn: #50fa7b;   /* Gain / Balance */
+    --accent-blu: #8be9fd;   /* Store / Action */
+    --accent-mag: #ff79c6;   /* Habit */
+    --border-rad: 8px;
+}
+
+body {
+    background-color: var(--bg-color);
+    color: var(--text-main);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    margin: 0;
+    padding: 0;
+    /* Prevent pull-to-refresh on mobile */
+    overscroll-behavior-y: none;
+}
+
+.app-container {
+    max-width: 600px;
+    margin: 0 auto;
+    padding: 20px;
+    padding-top: env(safe-area-inset-top); /* iOS notch support */
+}
+
+header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+    border-bottom: 1px solid var(--text-dim);
+    padding-bottom: 10px;
+}
+
+h1 { margin: 0; font-size: 1.5rem; letter-spacing: 2px; color: var(--accent-blu); }
+
+.balance-container {
+    font-family: 'Courier New', monospace;
+    font-size: 1.5rem;
+    color: var(--accent-grn);
+}
+
+/* Tabs */
+.tabs {
+    display: flex;
+    margin-bottom: 20px;
+    background: var(--card-bg);
+    border-radius: var(--border-rad);
+    padding: 4px;
+}
+
+.tab-btn {
+    flex: 1;
+    background: none;
+    border: none;
+    color: var(--text-dim);
+    padding: 10px;
+    font-size: 1rem;
+    cursor: pointer;
+    border-radius: var(--border-rad);
+    transition: 0.3s;
+}
+
+.tab-btn.active {
+    background-color: var(--bg-color);
+    color: var(--text-main);
+    font-weight: bold;
+}
+
+/* Views */
+.view { display: none; }
+.view.active { display: block; animation: fadeIn 0.2s; }
+
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+/* Inputs */
+.add-bar {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 15px;
+}
+
+input, select, button {
+    background: var(--card-bg);
+    border: 1px solid #444;
+    color: white;
+    padding: 10px;
+    border-radius: var(--border-rad);
+    font-size: 16px; /* Prevents zoom on iOS */
+}
+
+input:focus { outline: 1px solid var(--accent-blu); }
+
+input[type="text"] { flex: 2; }
+.small-input { width: 60px; text-align: center; }
+
+button {
+    background: var(--accent-blu);
+    color: #000;
+    font-weight: bold;
+    border: none;
+    cursor: pointer;
+}
+
+/* List Items */
+.list-container {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.item-card {
+    background-color: var(--card-bg);
+    padding: 15px;
+    border-radius: var(--border-rad);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+}
+
+.item-left { display: flex; align-items: center; gap: 10px; }
+.item-right { display: flex; align-items: center; gap: 10px; }
+
+.val-badge {
+    background: #333;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-family: monospace;
+    min-width: 30px;
+    text-align: center;
+}
+
+.habit-badge { color: var(--accent-mag); font-size: 0.8rem; border: 1px solid var(--accent-mag); padding: 2px 4px; border-radius: 4px;}
+.prio-p1 { border-left: 4px solid var(--accent-red); }
+.prio-p2 { border-left: 4px solid var(--accent-yel); }
+.prio-def { border-left: 4px solid var(--text-dim); }
+
+.action-btn {
+    padding: 8px 12px;
+    font-size: 0.9rem;
+}
+
+.btn-do { background-color: var(--accent-grn); color: black; }
+.btn-buy { background-color: var(--accent-yel); color: black; }
+.btn-del { background-color: transparent; color: var(--accent-red); padding: 5px; font-size: 1.2rem; }
+
+/* Log Styles */
+.code-font { font-family: 'Courier New', monospace; font-size: 0.9rem; }
+.log-entry {
+    padding: 10px;
+    border-bottom: 1px solid #333;
+    display: flex;
+    justify-content: space-between;
+}
+.log-date { color: var(--text-dim); font-size: 0.8rem; }
+.log-val.pos { color: var(--accent-grn); }
+.log-val.neg { color: var(--accent-red); }

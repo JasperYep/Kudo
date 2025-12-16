@@ -4,6 +4,7 @@
 #include <ctype.h>
 #include <unistd.h>
 #include <sys/stat.h>
+#include <time.h> // <-- 新增: 用于时间戳
 
 /*
  * KUDO - Minimalist Gamification Tracker
@@ -15,6 +16,7 @@
 #define MAX_STR 256
 #define DATA_DIR ".config/kudo"
 #define DATA_FILE "data.json"
+#define LOG_MAX 200 // 定义最大日志条目数
 
 // ANSI Colors
 #define COL_RESET "\033[0m"
@@ -23,6 +25,7 @@
 #define COL_GRN   "\033[1;32m"
 #define COL_GRY   "\033[90m"
 #define COL_BLU   "\033[1;34m"
+#define COL_MAG   "\033[1;35m" // 新增颜色用于日志
 
 typedef enum { P1 = 1, P2, P3, P4 } Priority;
 typedef enum { ONE_OFF = 0, HABIT = 1 } TaskType;
@@ -42,12 +45,24 @@ typedef struct {
     int cost;
 } Desire;
 
+// --- 新增: 日志结构体 ---
+typedef struct {
+    long timestamp; // 时间戳（Unix Time）
+    char description[MAX_STR]; // 日志描述 (任务/奖励名称)
+    int value; // 变动值 (+ coins for do, - coins for buy)
+    char type_code; // 类型代码 ('D' for Done, 'B' for Buy)
+} LogEntry;
+
+
 typedef struct {
     int coins;
     Task tasks[MAX_TASKS];
     int task_count;
     Desire desires[MAX_DESIRES];
     int desire_count;
+    // --- 新增: 日志状态 ---
+    LogEntry logs[LOG_MAX];
+    int log_count;
 } AppState;
 
 // --- UTILS ---
@@ -75,6 +90,28 @@ void ensure_directory() {
 int is_cmd(const char *arg, const char *cmd, const char *alias) {
     return (strcmp(arg, cmd) == 0 || (alias && strcmp(arg, alias) == 0));
 }
+
+// --- LOGGING ---
+
+long get_current_timestamp() {
+    return (long)time(NULL); 
+}
+
+void add_log_entry(AppState *state, char type_code, const char *description, int value) {
+    if (state->log_count >= LOG_MAX) {
+        // Log is full. Shift remove the oldest log (FIFO)
+        for(int i=0; i<state->log_count-1; i++) state->logs[i] = state->logs[i+1];
+        state->log_count = LOG_MAX - 1;
+    }
+
+    LogEntry *l = &state->logs[state->log_count];
+    l->timestamp = get_current_timestamp();
+    snprintf(l->description, MAX_STR, "%s", description);
+    l->value = value;
+    l->type_code = type_code;
+    state->log_count++;
+}
+
 
 // --- STATE MANAGEMENT ---
 
@@ -117,7 +154,20 @@ void save_state(AppState *state) {
             (i < state->desire_count - 1) ? "," : ""
         );
     }
+    fprintf(f, "  ],\n"); // <-- 注意：这里需要逗号，因为后面还有 logs
+
+    // --- 新增: Write Logs ---
+    fprintf(f, "  \"logs\": [\n");
+    for (int i = 0; i < state->log_count; i++) {
+        // 使用缩写字段名 t:timestamp, d:description, v:value, c:type_code
+        fprintf(f, "    { \"t\": %ld, \"d\": \"%s\", \"v\": %d, \"c\": \"%c\" }%s\n",
+            state->logs[i].timestamp, state->logs[i].description, state->logs[i].value, state->logs[i].type_code,
+            (i < state->log_count - 1) ? "," : ""
+        );
+    }
     fprintf(f, "  ]\n}\n");
+    // -------------------------
+
     fclose(f);
 }
 
@@ -128,22 +178,25 @@ void load_state(AppState *state) {
     state->coins = 0;
     state->task_count = 0;
     state->desire_count = 0;
+    state->log_count = 0; // <-- 初始化
 
     FILE *f = fopen(path, "r");
     if (!f) return;
 
     char line[2048];
-    int in_tasks = 0, in_desires = 0;
+    int in_tasks = 0, in_desires = 0, in_logs = 0; // <-- 新增: in_logs
 
     while (fgets(line, sizeof(line), f)) {
         if (strstr(line, "\"coins\":")) {
             sscanf(line, "  \"coins\": %d,", &state->coins);
         } else if (strstr(line, "\"tasks\": [")) {
-            in_tasks = 1; in_desires = 0;
+            in_tasks = 1; in_desires = 0; in_logs = 0;
         } else if (strstr(line, "\"desires\": [")) {
-            in_tasks = 0; in_desires = 1;
+            in_tasks = 0; in_desires = 1; in_logs = 0;
+        } else if (strstr(line, "\"logs\": [")) { // <-- 新增: Logs 块识别
+            in_tasks = 0; in_desires = 0; in_logs = 1;
         } else if (strchr(line, ']')) {
-            in_tasks = 0; in_desires = 0;
+            in_tasks = 0; in_desires = 0; in_logs = 0;
         } else if (strchr(line, '{')) {
             if (in_tasks && state->task_count < MAX_TASKS) {
                 Task *t = &state->tasks[state->task_count];
@@ -158,6 +211,12 @@ void load_state(AppState *state) {
                 sscanf(start, "{ \"id\": %d, \"title\": \"%[^\"]\", \"cost\": %d }",
                        &d->id, d->title, &d->cost);
                 state->desire_count++;
+            } else if (in_logs && state->log_count < LOG_MAX) { // <-- 新增: Log 加载逻辑
+                LogEntry *l = &state->logs[state->log_count];
+                char *start = strchr(line, '{');
+                sscanf(start, "{ \"t\": %ld, \"d\": \"%[^\"]\", \"v\": %d, \"c\": \"%c\" }",
+                        &l->timestamp, l->description, &l->value, &l->type_code);
+                state->log_count++;
             }
         }
     }
@@ -192,7 +251,7 @@ void cmd_list(AppState *state) {
         if (t.priority == P1) col = COL_RED;
         else if (t.priority == P2) col = COL_YEL;
 
-        printf("%s%3d %s | $%d  %s%s\n", col, t.id, flags, t.value, t.title, COL_RESET);
+        printf("%s%3d %s | $%d \t %s%s\n", col, t.id, flags, t.value, t.title, COL_RESET);
     }
 
     print_header("STORE");
@@ -230,9 +289,17 @@ void cmd_store(AppState *state, char *title, int cost) {
 void cmd_do(AppState *state, int id) {
     for(int i=0; i<state->task_count; i++) {
         if (state->tasks[i].id == id) {
-            state->coins += state->tasks[i].value;
-            printf(COL_GRN "Done! " COL_RESET "'%s' (+$%d)\n", state->tasks[i].title, state->tasks[i].value);
+            int value = state->tasks[i].value;
+            char title[MAX_STR];
+            snprintf(title, MAX_STR, "%s", state->tasks[i].title); // 复制标题
             
+            state->coins += value;
+            printf(COL_GRN "Done! " COL_RESET "'%s' (+$%d)\n", title, value);
+            
+            // --- 记录日志: 完成任务 ('D' for Done) ---
+            add_log_entry(state, 'D', title, value);
+            // ----------------------------------------
+
             if (state->tasks[i].type == ONE_OFF) {
                 // Shift remove
                 for(int j=i; j<state->task_count-1; j++) state->tasks[j] = state->tasks[j+1];
@@ -248,9 +315,18 @@ void cmd_do(AppState *state, int id) {
 void cmd_buy(AppState *state, int id) {
     for(int i=0; i<state->desire_count; i++) {
         if (state->desires[i].id == id) {
-            if (state->coins >= state->desires[i].cost) {
-                state->coins -= state->desires[i].cost;
-                printf(COL_YEL "Purchased: " COL_RESET "%s (-$%d)\n", state->desires[i].title, state->desires[i].cost);
+            int cost = state->desires[i].cost;
+            char title[MAX_STR];
+            snprintf(title, MAX_STR, "%s", state->desires[i].title); // 复制标题
+            
+            if (state->coins >= cost) {
+                state->coins -= cost;
+                printf(COL_YEL "Purchased: " COL_RESET "%s (-$%d)\n", title, cost);
+                
+                // --- 记录日志: 购买奖励 ('B' for Buy) ---
+                add_log_entry(state, 'B', title, -cost); // 消费是负值
+                // ----------------------------------------
+                
                 save_state(state);
             } else {
                 printf(COL_RED "Too expensive." COL_RESET " Need $%d.\n", state->desires[i].cost);
@@ -262,6 +338,7 @@ void cmd_buy(AppState *state, int id) {
 }
 
 void cmd_rm(AppState *state, int id) {
+    // ... (cmd_rm 逻辑不变，删除操作不记录到活动日志)
     int found = 0;
     // Check tasks
     for(int i=0; i<state->task_count; i++) {
@@ -290,6 +367,38 @@ void cmd_rm(AppState *state, int id) {
     else printf("ID %d not found.\n", id);
 }
 
+void cmd_log(AppState *state) {
+    print_header("ACTIVITY LOG");
+    if (state->log_count == 0) {
+        printf(COL_GRY "  (No activity logged)\n" COL_RESET);
+        return;
+    }
+    
+    char date_str[20];
+    
+    // 从最新记录开始倒序打印
+    for (int i = state->log_count - 1; i >= 0; i--) {
+        LogEntry l = state->logs[i];
+        
+        // 转换时间戳为可读格式
+        time_t timestamp = (time_t)l.timestamp;
+        // 使用本地时间格式化
+        strftime(date_str, sizeof(date_str), "%m-%d %H:%M", localtime(&timestamp));
+        
+        const char *col_value = (l.value > 0) ? COL_GRN : COL_RED;
+        const char *action_label = (l.type_code == 'D') ? "DO" : "BUY";
+        const char *col_action = (l.type_code == 'D') ? COL_BLU : COL_MAG;
+
+        printf("%s%s %s[%s]%s %s%-4d %s%s%s\n", 
+            COL_GRY, date_str, // 日期
+            col_action, action_label, COL_RESET, // 动作 (DO/BUY)
+            col_value, l.value, // 金币变动 (+-值)
+            COL_GRY, l.description, COL_RESET // 描述
+        );
+    }
+}
+
+
 void cmd_status(AppState *state) {
     int active = 0;
     for(int i=0; i<state->task_count; i++) if(!state->tasks[i].completed) active++;
@@ -298,11 +407,12 @@ void cmd_status(AppState *state) {
 
 void help() {
     printf(COL_BLU "KUDO" COL_RESET " - Minimalist Tracker\n\n");
-    printf("  ls, list             Show dashboard\n");
-    printf("  st, status           One-line status (for bars)\n");
-    printf("  do <id>              Complete task\n");
-    printf("  rm <id>              Delete task/item\n");
-    printf("  buy <id>             Purchase reward\n");
+    printf("  ls, list           Show dashboard\n");
+    printf("  st, status         One-line status (for bars)\n");
+    printf("  log, l             Show activity log\n"); // <-- 新增
+    printf("  do <id>            Complete task (earn coins)\n");
+    printf("  buy <id>           Purchase reward (spend coins)\n");
+    printf("  rm <id>            Delete task/item\n");
     printf("\n");
     printf("  add \"Title\" <val> [prio]  Add one-off task\n");
     printf("  habit \"Title\" <val>       Add recurring habit\n");
@@ -331,6 +441,9 @@ int main(int argc, char *argv[]) {
     }
     else if (is_cmd(action, "status", "st")) {
         cmd_status(&state);
+    }
+    else if (is_cmd(action, "log", "l")) { // <-- 新增: log 命令处理
+        cmd_log(&state);
     }
     else if (is_cmd(action, "add", "a")) {
         if (argc < 4) { printf("Usage: add \"Title\" <value> [priority 1-4]\n"); return 1; }

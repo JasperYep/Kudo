@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>KUDO Tracker</title>
+    
+    <!-- iOS PWA Meta Tags -->
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="KUDO">
+    
+    <link rel="stylesheet" href="style.css">
+    <link rel="manifest" href="manifest.json">
+</head>
+<body>
+
+    <div class="app-container">
+        <!-- Header / Balance -->
+        <header>
+            <h1>KUDO</h1>
+            <div class="balance-container">
+                <span id="balance-amount">0</span>
+                <span class="currency">$</span>
+            </div>
+        </header>
+
+        <!-- Navigation Tabs -->
+        <nav class="tabs">
+            <button class="tab-btn active" onclick="switchTab('tasks')">Tasks</button>
+            <button class="tab-btn" onclick="switchTab('store')">Store</button>
+            <button class="tab-btn" onclick="switchTab('log')">Log</button>
+        </nav>
+
+        <!-- Main Content Area -->
+        <main id="main-content">
+            <!-- Tasks View -->
+            <div id="view-tasks" class="view active">
+                <div class="add-bar">
+                    <input type="text" id="task-title" placeholder="New Task Title">
+                    <input type="number" id="task-val" placeholder="$" class="small-input">
+                    <select id="task-type" class="small-input">
+                        <option value="0">Once</option>
+                        <option value="1">Habit</option>
+                    </select>
+                    <button onclick="addTask()">+</button>
+                </div>
+                <div id="task-list" class="list-container"></div>
+            </div>
+
+            <!-- Store View -->
+            <div id="view-store" class="view">
+                <div class="add-bar">
+                    <input type="text" id="store-title" placeholder="Reward Title">
+                    <input type="number" id="store-cost" placeholder="$" class="small-input">
+                    <button onclick="addStoreItem()">+</button>
+                </div>
+                <div id="store-list" class="list-container"></div>
+            </div>
+
+            <!-- Log View -->
+            <div id="view-log" class="view">
+                <div id="log-list" class="list-container code-font"></div>
+            </div>
+        </main>
+    </div>
+
+    <script src="app.js"></script>
+    <script>
+        // Register Service Worker
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('./sw.js');
+        }
+    </script>
+</body>
+</html>
