@@ -1,7 +1,10 @@
 package com.kudo.app.ui.components
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -9,12 +12,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.kudo.app.ui.theme.LightCard
-import com.kudo.app.ui.theme.DarkCard
-import com.kudo.app.ui.theme.LightGold
-import com.kudo.app.ui.theme.DarkGold
-import com.kudo.app.ui.theme.LightGreen
-import com.kudo.app.ui.theme.DarkGreen
+import com.kudo.app.ui.theme.*
 
 @Composable
 fun Header(
@@ -73,7 +71,7 @@ fun Header(
             // Settings button
             androidx.compose.material3.IconButton(onClick = { /* TODO */ }) {
                 androidx.compose.material3.Icon(
-                    androidx.compose.material.icons.Icons.Default.Settings,
+                    Icons.Filled.Settings,
                     contentDescription = "Settings",
                     tint = if (isDark) Color.Gray else Color.Gray
                 )
@@ -103,7 +101,9 @@ fun Header(
                     text = coins.toString(),
                     fontSize = 34.sp,
                     fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
-                    color = if (isDark) DarkTextMain else LightTextMain
+                    color = if (isDark) DarkTextMain else LightTextMain,
+                    fontSize = 34.sp,
+                    fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
                 )
             }
             

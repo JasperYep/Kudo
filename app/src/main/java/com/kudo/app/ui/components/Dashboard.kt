@@ -3,6 +3,8 @@ package com.kudo.app.ui.components
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
@@ -149,7 +151,7 @@ fun Dashboard(
                 }
             ) {
                 androidx.compose.material3.Icon(
-                    androidx.compose.material.icons.Icons.Default.Add,
+                    Icons.Filled.Add,
                     contentDescription = "Add",
                     tint = if (isDark) DarkGreen else LightGreen
                 )

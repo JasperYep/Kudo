@@ -1,6 +1,8 @@
 package com.kudo.app.domain
 
 import com.kudo.app.domain.model.UserStats
+import kotlin.math.pow
+import kotlin.math.sqrt
 
 class GameMechanics {
     
@@ -40,7 +42,7 @@ class GameMechanics {
      * 计算等级
      */
     fun calculateLevel(life: Int): Int {
-        return Math.sqrt(life / 100.0).toInt() + 1
+        return sqrt(life / 100.0).toInt() + 1
     }
     
     /**
@@ -48,8 +50,8 @@ class GameMechanics {
      */
     fun calculateXpProgress(life: Int): Float {
         val level = calculateLevel(life)
-        val currentLevelStart = kotlin.math.pow((level - 1).toDouble(), 2.0) * 100
-        val nextLevelStart = kotlin.math.pow(level.toDouble(), 2.0) * 100
+        val currentLevelStart = ((level - 1).toDouble().pow(2.0) * 100).toInt()
+        val nextLevelStart = (level.toDouble().pow(2.0) * 100).toInt()
         val progress = (life - currentLevelStart).toFloat()
         val total = (nextLevelStart - currentLevelStart).toFloat()
         return (progress / total).coerceIn(0f, 1f)

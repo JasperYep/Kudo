@@ -149,7 +149,7 @@ fun TaskView(
         items(tasks.filter { it.list.toString().lowercase() == listMode }) { task ->
             TaskItem(
                 task = task,
-                onComplete = { onTaskComplete(task) }
+                onComplete = { /* TODO */ }
             )
         }
     }
