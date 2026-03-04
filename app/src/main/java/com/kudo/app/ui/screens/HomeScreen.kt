@@ -107,7 +107,9 @@ fun TaskView(
         // Dashboard
         item {
             Dashboard(
-                onAddTask = { /* TODO */ },
+                onAddTask = { title, value, mode -> 
+                    // TODO: Add task
+                },
                 mode = listMode,
                 onModeToggle = { 
                     onListModeChange(if (listMode == "focus") "inbox" else "focus")

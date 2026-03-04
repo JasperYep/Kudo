@@ -101,9 +101,7 @@ fun Header(
                     text = coins.toString(),
                     fontSize = 34.sp,
                     fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
-                    color = if (isDark) DarkTextMain else LightTextMain,
-                    fontSize = 34.sp,
-                    fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
+                    color = if (isDark) DarkTextMain else LightTextMain
                 )
             }
             
