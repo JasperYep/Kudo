@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Kudo</string>
+    
+    <!-- Common -->
+    <string name="ok">OK</string>
+    <string name="cancel">Cancel</string>
+    <string name="delete">Delete</string>
+    <string name="save">Save</string>
+    <string name="edit">Edit</string>
+    <string name="confirm">Confirm</string>
+    
+    <!-- Home -->
+    <string name="lvl">LVL %1$d</string>
+    <string name="coins">$%1$d</string>
+    <string name="mult">%1$.1fx</string>
+    
+    <!-- Dashboard -->
+    <string name="add_item_placeholder">Add new item…</string>
+    <string name="value_placeholder">10</string>
+    <string name="mode_once">ONCE</string>
+    <string name="mode_store">STORE</string>
+    
+    <!-- Sections -->
+    <string name="habits">Habits</string>
+    <string name="focus">Focus</string>
+    <string name="inbox">Inbox</string>
+    <string name="store">Store</string>
+    <string name="log">Log</string>
+    <string name="settings">Settings</string>
+    
+    <!-- Task Types -->
+    <string name="task">Task</string>
+    <string name="habit">Habit</string>
+    
+    <!-- Messages -->
+    <string name="confirm_delete">Delete this item?</string>
+    <string name="confirm_purchase">Purchase this reward?</string>
+    <string name="not_enough_coins">Not enough coins!</string>
+    <string name="purchase_success">Purchase successful!</string>
+    <string name="habit_complete">Habit complete!</string>
+    <string name="earn_coins">+$%1$d</string>
+    
+    <!-- Stats -->
+    <string name="lifetime_high">Lifetime High</string>
+    <string name="income_expense_ratio">Income/Expense</string>
+    <string name="total_tasks">Total Tasks</string>
+    <string name="total_habits">Total Habits</string>
+    
+    <!-- Export/Import -->
+    <string name="export_data">Export Data</string>
+    <string name="import_data">Import Data</string>
+    <string name="export_success">Data exported successfully</string>
+    <string name="import_success">Data imported successfully</string>
+    <string name="export_failed">Export failed</string>
+    <string name="import_failed">Import failed</string>
+    
+    <!-- Theme -->
+    <string name="light_theme">Light</string>
+    <string name="dark_theme">Dark</string>
+</resources>
