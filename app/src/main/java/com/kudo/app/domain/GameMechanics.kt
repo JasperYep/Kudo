@@ -48,10 +48,10 @@ class GameMechanics {
      */
     fun calculateXpProgress(life: Int): Float {
         val level = calculateLevel(life)
-        val currentLevelStart = Math.pow((level - 1).toDouble(), 2.0) * 100
-        val nextLevelStart = Math.pow(level.toDouble(), 2.0) * 100
-        val progress = life - currentLevelStart
-        val total = nextLevelStart - currentLevelStart
+        val currentLevelStart = kotlin.math.pow((level - 1).toDouble(), 2.0) * 100
+        val nextLevelStart = kotlin.math.pow(level.toDouble(), 2.0) * 100
+        val progress = (life - currentLevelStart).toFloat()
+        val total = (nextLevelStart - currentLevelStart).toFloat()
         return (progress / total).coerceIn(0f, 1f)
     }
     

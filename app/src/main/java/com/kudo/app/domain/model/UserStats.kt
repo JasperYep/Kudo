@@ -1,5 +1,8 @@
 package com.kudo.app.domain.model
 
+import kotlin.math.pow
+import kotlin.math.sqrt
+
 data class UserStats(
     val coins: Int = 0,
     val life: Int = 0,
@@ -8,14 +11,14 @@ data class UserStats(
     val recentValues: List<Int> = emptyList()
 ) {
     val level: Int
-        get() = Math.sqrt(life / 100.0).toInt() + 1
+        get() = sqrt(life / 100.0).toInt() + 1
     
     val xpProgress: Float
         get() {
-            val currentLevelStart = Math.pow((level - 1).toDouble(), 2.0) * 100
-            val nextLevelStart = Math.pow(level.toDouble(), 2.0) * 100
-            val progress = life - currentLevelStart
-            val total = nextLevelStart - currentLevelStart
+            val currentLevelStart = ((level - 1).toDouble().pow(2.0) * 100).toFloat()
+            val nextLevelStart = (level.toDouble().pow(2.0) * 100).toFloat()
+            val progress = (life - currentLevelStart.toInt()).toFloat()
+            val total = (nextLevelStart.toInt() - currentLevelStart.toInt()).toFloat()
             return (progress / total).coerceIn(0f, 1f)
         }
     

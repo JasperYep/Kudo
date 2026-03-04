@@ -73,6 +73,9 @@ dependencies {
     implementation("androidx.compose.material:material-icons-extended")
     implementation("androidx.navigation:navigation-compose:2.7.5")
     
+    // Accompanist (for system UI controller)
+    implementation("com.google.accompanist:accompanist-systemuicontroller:0.32.0")
+    
     // Room Database
     implementation("androidx.room:room-runtime:2.6.1")
     implementation("androidx.room:room-ktx:2.6.1")

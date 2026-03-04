@@ -21,7 +21,7 @@ fun TaskItem(
     task: Task,
     onComplete: () -> Unit
 ) {
-    val isDark = isSystemInDarkTheme()
+    val isDark = false // TODO: Get from theme
     
     Row(
         modifier = Modifier
@@ -88,7 +88,7 @@ fun HabitItem(
     habit: Task,
     onCharge: () -> Unit
 ) {
-    val isDark = isSystemInDarkTheme()
+    val isDark = false // TODO: Get from theme
     
     Box(
         modifier = Modifier

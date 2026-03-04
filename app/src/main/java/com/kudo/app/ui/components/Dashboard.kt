@@ -28,7 +28,7 @@ fun Dashboard(
     mode: String,
     onModeToggle: () -> Unit
 ) {
-    val isDark = isSystemInDarkTheme()
+    val isDark = false // TODO: Get from theme
     var title by remember { mutableStateOf("") }
     var value by remember { mutableStateOf("") }
     

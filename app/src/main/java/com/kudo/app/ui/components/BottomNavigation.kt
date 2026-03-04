@@ -18,7 +18,7 @@ fun BottomNavigation(
     currentView: String,
     onNavigate: (String) -> Unit
 ) {
-    val isDark = isSystemInDarkTheme()
+    val isDark = false // TODO: Get from theme
     
     Row(
         modifier = Modifier
@@ -62,7 +62,7 @@ fun NavItem(
     isSelected: Boolean,
     onClick: () -> Unit
 ) {
-    val isDark = isSystemInDarkTheme()
+    val isDark = false // TODO: Get from theme
     
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,

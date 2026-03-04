@@ -23,7 +23,7 @@ fun Header(
     xpProgress: Float,
     multiplier: Float
 ) {
-    val isDark = isSystemInDarkTheme()
+    val isDark = false // TODO: Get from theme
     
     Column(
         modifier = Modifier
