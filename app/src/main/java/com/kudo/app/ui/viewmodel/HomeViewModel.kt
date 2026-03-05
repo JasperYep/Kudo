@@ -117,13 +117,14 @@ class HomeViewModel(
                     task.value
                 )
                 val newMax = maxOf(stats.maxCoins, newCoins)
+                val newRecentValues = (recentValues + task.value).takeLast(5)
                 
                 userStatsRepository.updateStats(
                     coins = newCoins,
                     life = newLife,
                     multiplier = newMultiplier,
                     maxCoins = newMax,
-                    recentValues = (recentValues + task.value).takeLast(5)
+                    recentValues = JSONArray(newRecentValues).toString()
                 )
             }
             
@@ -179,7 +180,7 @@ class HomeViewModel(
                 habitCount = habit.habitCount + 1,
                 lastCompletedTime = System.currentTimeMillis()
             )
-            taskRepository.update(updatedHabit.toEntity())
+            taskRepository.update(updatedHabit.toEntityTask())
             
             // Add log
             logRepository.insert(
