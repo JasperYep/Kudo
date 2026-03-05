@@ -295,8 +295,8 @@ fun TaskEntity.toDomainTask(): Task {
     )
 }
 
-fun Task.toEntityTask(): TaskEntity {
-    return TaskEntity(
+fun Task.toEntityTask(): com.kudo.app.data.entity.TaskEntity {
+    return com.kudo.app.data.entity.TaskEntity(
         id = id,
         title = title,
         value = value,
@@ -323,8 +323,8 @@ fun StoreItemEntity.toDomainStoreItem(): StoreItem {
     )
 }
 
-fun StoreItem.toEntityStoreItem(): StoreItemEntity {
-    return StoreItemEntity(
+fun StoreItem.toEntityStoreItem(): com.kudo.app.data.entity.StoreItemEntity {
+    return com.kudo.app.data.entity.StoreItemEntity(
         id = id,
         name = name,
         cost = cost,
