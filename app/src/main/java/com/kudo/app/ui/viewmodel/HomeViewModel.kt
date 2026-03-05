@@ -165,13 +165,20 @@ class HomeViewModel(
                 val newCoins = stats.coins + reward
                 val newLife = stats.life + habit.value
                 val newMax = maxOf(stats.maxCoins, newCoins)
+                val recentValues = try {
+                    JSONArray(stats.recentValues).let { json ->
+                        List(json.length()) { json.getInt(it) }
+                    }
+                } catch (e: Exception) {
+                    emptyList()
+                }
                 
                 userStatsRepository.updateStats(
                     coins = newCoins,
                     life = newLife,
                     multiplier = stats.multiplier,
                     maxCoins = newMax,
-                    recentValues = stats.recentValues
+                    recentValues = JSONArray(recentValues).toString()
                 )
             }
             
@@ -213,12 +220,20 @@ class HomeViewModel(
             viewModelScope.launch {
                 val currentStats = userStatsRepository.getUserStats()
                 currentStats?.let { stats ->
+                    val recentValues = try {
+                        JSONArray(stats.recentValues).let { json ->
+                            List(json.length()) { json.getInt(it) }
+                        }
+                    } catch (e: Exception) {
+                        emptyList()
+                    }
+                    
                     userStatsRepository.updateStats(
                         coins = stats.coins - item.cost,
                         life = stats.life,
                         multiplier = stats.multiplier,
                         maxCoins = stats.maxCoins,
-                        recentValues = stats.recentValues
+                        recentValues = JSONArray(recentValues).toString()
                     )
                 }
                 
