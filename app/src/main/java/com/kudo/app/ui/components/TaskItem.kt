@@ -19,7 +19,8 @@ import com.kudo.app.ui.theme.*
 @Composable
 fun TaskItem(
     task: Task,
-    onComplete: () -> Unit
+    onComplete: () -> Unit,
+    onDelete: () -> Unit
 ) {
     val isDark = false // TODO: Get from theme
     
@@ -36,49 +37,74 @@ fun TaskItem(
                 if (isDark) DarkLine else LightLine,
                 RoundedCornerShape(14.dp)
             )
-            .clickable { onComplete() }
             .padding(12.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Column(
-            modifier = Modifier.weight(1f)
+        Row(
+            modifier = Modifier.weight(1f),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(
-                text = task.title,
-                fontSize = 14.sp,
-                color = if (isDark) DarkTextMain else LightTextMain,
-                textDecoration = if (task.isCompleted) TextDecoration.LineThrough else null
-            )
-            Spacer(modifier = Modifier.height(4.dp))
-            Text(
-                text = "+$${task.value}",
-                fontSize = 12.sp,
-                color = if (isDark) DarkGreen else LightGreen
-            )
+            // Checkbox
+            Box(
+                modifier = Modifier
+                    .size(24.dp)
+                    .border(
+                        2.dp,
+                        if (task.isCompleted) {
+                            if (isDark) DarkGreen else LightGreen
+                        } else {
+                            Color.Gray.copy(alpha = 0.3f)
+                        },
+                        RoundedCornerShape(6.dp)
+                    )
+                    .background(
+                        if (task.isCompleted) {
+                            if (isDark) DarkGreen else LightGreen
+                        } else {
+                            Color.Transparent
+                        },
+                        RoundedCornerShape(6.dp)
+                    )
+                    .clickable { onComplete() },
+                contentAlignment = Alignment.Center
+            ) {
+                if (task.isCompleted) {
+                    Text(
+                        text = "✓",
+                        color = Color.White,
+                        fontSize = 16.sp
+                    )
+                }
+            }
+            
+            // Task info
+            Column(
+                modifier = Modifier.weight(1f)
+            ) {
+                Text(
+                    text = task.title,
+                    fontSize = 14.sp,
+                    color = if (isDark) DarkTextMain else LightTextMain,
+                    textDecoration = if (task.isCompleted) TextDecoration.LineThrough else null
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = "+$${task.value}",
+                    fontSize = 12.sp,
+                    color = if (isDark) DarkGreen else LightGreen
+                )
+            }
         }
         
-        // Checkbox
-        Box(
+        // Delete button
+        Text(
+            text = "🗑",
+            fontSize = 18.sp,
             modifier = Modifier
-                .size(24.dp)
-                .border(
-                    2.dp,
-                    if (task.isCompleted) {
-                        if (isDark) DarkGreen else LightGreen
-                    } else {
-                        Color.Gray.copy(alpha = 0.3f)
-                    },
-                    RoundedCornerShape(6.dp)
-                )
-                .background(
-                    if (task.isCompleted) {
-                        if (isDark) DarkGreen else LightGreen
-                    } else {
-                        Color.Transparent
-                    },
-                    RoundedCornerShape(6.dp)
-                )
+                .clickable { onDelete() }
+                .padding(8.dp)
         )
     }
 }
@@ -86,7 +112,8 @@ fun TaskItem(
 @Composable
 fun HabitItem(
     habit: Task,
-    onCharge: () -> Unit
+    onCharge: () -> Unit,
+    onDelete: () -> Unit
 ) {
     val isDark = false // TODO: Get from theme
     
@@ -103,7 +130,6 @@ fun HabitItem(
                 if (isDark) DarkLine else LightLine,
                 RoundedCornerShape(14.dp)
             )
-            .clickable { onCharge() }
             .padding(12.dp)
     ) {
         Row(
@@ -111,7 +137,9 @@ fun HabitItem(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Column {
+            Column(
+                modifier = Modifier.weight(1f)
+            ) {
                 Text(
                     text = habit.title,
                     fontSize = 14.sp,
@@ -137,19 +165,34 @@ fun HabitItem(
                 }
             }
             
-            // Charge indicator
-            Box(
-                modifier = Modifier
-                    .size(32.dp)
-                    .background(
-                        if (isDark) DarkGoldBg else LightGoldBg,
-                        shape = RoundedCornerShape(8.dp)
-                    ),
-                contentAlignment = Alignment.Center
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
+                // Charge button
+                Box(
+                    modifier = Modifier
+                        .size(32.dp)
+                        .background(
+                            if (isDark) DarkGoldBg else LightGoldBg,
+                            shape = RoundedCornerShape(8.dp)
+                        )
+                        .clickable { onCharge() },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "⚡",
+                        fontSize = 18.sp
+                    )
+                }
+                
+                // Delete button
                 Text(
-                    text = "⚡",
-                    fontSize = 18.sp
+                    text = "🗑",
+                    fontSize = 16.sp,
+                    modifier = Modifier
+                        .clickable { onDelete() }
+                        .padding(4.dp)
                 )
             }
         }
