@@ -117,14 +117,14 @@ class HomeViewModel(
                     task.value
                 )
                 val newMax = maxOf(stats.maxCoins, newCoins)
-                val newRecentValues = (recentValues + task.value).takeLast(5)
+                val newRecentValues = JSONArray((recentValues + task.value).takeLast(5)).toString()
                 
                 userStatsRepository.updateStats(
                     coins = newCoins,
                     life = newLife,
                     multiplier = newMultiplier,
                     maxCoins = newMax,
-                    recentValues = JSONArray(newRecentValues).toString()
+                    recentValues = newRecentValues
                 )
             }
             
@@ -178,7 +178,7 @@ class HomeViewModel(
                     life = newLife,
                     multiplier = stats.multiplier,
                     maxCoins = newMax,
-                    recentValues = JSONArray(recentValues).toString()
+                    recentValues = stats.recentValues
                 )
             }
             
@@ -233,7 +233,7 @@ class HomeViewModel(
                         life = stats.life,
                         multiplier = stats.multiplier,
                         maxCoins = stats.maxCoins,
-                        recentValues = JSONArray(recentValues).toString()
+                        recentValues = stats.recentValues
                     )
                 }
                 

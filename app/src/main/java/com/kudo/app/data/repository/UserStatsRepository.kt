@@ -25,14 +25,14 @@ class UserStatsRepository(private val userStatsDao: UserStatsDao) {
         life: Int,
         multiplier: Float,
         maxCoins: Int,
-        recentValues: List<Int>
+        recentValues: String
     ) {
         userStatsDao.updateStats(
             coins = coins,
             life = life,
             multiplier = multiplier,
             maxCoins = maxCoins,
-            recentValues = JSONArray(recentValues).toString(),
+            recentValues = recentValues,
             updatedAt = System.currentTimeMillis()
         )
     }
