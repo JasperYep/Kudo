@@ -2,11 +2,13 @@ package com.kudo.app.ui.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.kudo.app.data.entity.*
 import com.kudo.app.data.repository.*
 import com.kudo.app.domain.GameMechanics
 import com.kudo.app.domain.model.*
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import org.json.JSONArray
 
 class HomeViewModel(
     private val taskRepository: TaskRepository,
@@ -35,8 +37,8 @@ class HomeViewModel(
                             life = it.life,
                             multiplier = it.multiplier,
                             maxCoins = it.maxCoins,
-                            level = calculateLevel(it.life),
-                            xpProgress = calculateXpProgress(it.life)
+                            level = gameMechanics.calculateLevel(it.life),
+                            xpProgress = gameMechanics.calculateXpProgress(it.life)
                         )
                     }
                 }
@@ -48,7 +50,7 @@ class HomeViewModel(
         viewModelScope.launch {
             taskRepository.getTasksByTypeAndList(0, "focus").collect { tasks ->
                 _uiState.update { state ->
-                    state.copy(focusTasks = tasks.map { it.toDomain() })
+                    state.copy(focusTasks = tasks.map { it.toDomainTask() })
                 }
             }
         }
@@ -56,7 +58,7 @@ class HomeViewModel(
         viewModelScope.launch {
             taskRepository.getTasksByTypeAndList(0, "inbox").collect { tasks ->
                 _uiState.update { state ->
-                    state.copy(inboxTasks = tasks.map { it.toDomain() })
+                    state.copy(inboxTasks = tasks.map { it.toDomainTask() })
                 }
             }
         }
@@ -64,7 +66,7 @@ class HomeViewModel(
         viewModelScope.launch {
             taskRepository.getTasksByTypeAndList(1, "focus").collect { tasks ->
                 _uiState.update { state ->
-                    state.copy(habits = tasks.map { it.toDomain() })
+                    state.copy(habits = tasks.map { it.toDomainTask() })
                 }
             }
         }
@@ -74,7 +76,7 @@ class HomeViewModel(
         viewModelScope.launch {
             storeRepository.allItems.collect { items ->
                 _uiState.update { state ->
-                    state.copy(storeItems = items.map { it.toDomain() })
+                    state.copy(storeItems = items.map { it.toDomainStoreItem() })
                 }
             }
         }
@@ -101,9 +103,17 @@ class HomeViewModel(
             currentStats?.let { stats ->
                 val newCoins = stats.coins + reward
                 val newLife = stats.life + task.value
+                val recentValues = try {
+                    JSONArray(stats.recentValues).let { json ->
+                        List(json.length()) { json.getInt(it) }
+                    }
+                } catch (e: Exception) {
+                    emptyList()
+                }
+                
                 val newMultiplier = gameMechanics.updateMultiplier(
                     stats.multiplier,
-                    gameMechanics.getRecentValues(),
+                    recentValues,
                     task.value
                 )
                 val newMax = maxOf(stats.maxCoins, newCoins)
@@ -113,7 +123,7 @@ class HomeViewModel(
                     life = newLife,
                     multiplier = newMultiplier,
                     maxCoins = newMax,
-                    recentValues = stats.recentValues + task.value
+                    recentValues = (recentValues + task.value).takeLast(5)
                 )
             }
             
@@ -269,7 +279,7 @@ data class HomeUiState(
 )
 
 // Extension functions
-fun TaskEntity.toDomain(): Task {
+fun TaskEntity.toDomainTask(): Task {
     return Task(
         id = id,
         title = title,
@@ -285,7 +295,7 @@ fun TaskEntity.toDomain(): Task {
     )
 }
 
-fun Task.toEntity(): TaskEntity {
+fun Task.toEntityTask(): TaskEntity {
     return TaskEntity(
         id = id,
         title = title,
@@ -301,7 +311,7 @@ fun Task.toEntity(): TaskEntity {
     )
 }
 
-fun StoreItemEntity.toDomain(): StoreItem {
+fun StoreItemEntity.toDomainStoreItem(): StoreItem {
     return StoreItem(
         id = id,
         name = name,
@@ -313,7 +323,7 @@ fun StoreItemEntity.toDomain(): StoreItem {
     )
 }
 
-fun StoreItem.toEntity(): StoreItemEntity {
+fun StoreItem.toEntityStoreItem(): StoreItemEntity {
     return StoreItemEntity(
         id = id,
         name = name,
