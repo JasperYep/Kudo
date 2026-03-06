@@ -32,7 +32,7 @@ fun CollapsibleDashboard(
     var isExpanded by remember { mutableStateOf(false) }
     var title by remember { mutableStateOf("") }
     var value by remember { mutableStateOf("") }
-    val isDark = false // TODO: Get from theme
+    val isDark = false
     
     val dragThreshold = 100f
     
@@ -51,7 +51,6 @@ fun CollapsibleDashboard(
                 )
             }
     ) {
-        // Header bar (always visible)
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -63,25 +62,19 @@ fun CollapsibleDashboard(
                 .border(
                     1.dp,
                     if (isDark) DarkLine else LightLine,
-                    RoundedCornerShape(bottomStart = 14.dp, bottomEnd = 14.dp)
+                    shape = RoundedCornerShape(bottomStart = 14.dp, bottomEnd = 14.dp)
                 )
                 .clickable { isExpanded = !isExpanded }
                 .padding(horizontal = 16.dp),
             contentAlignment = Alignment.Center
         ) {
-            Row(
-                horizontalArrangement = Arrangement.Center,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = if (isExpanded) "👆 上滑收起" : "👇 下滑添加任务",
-                    fontSize = 12.sp,
-                    color = Color.Gray
-                )
-            }
+            Text(
+                text = if (isExpanded) "👆 上滑收起" else "👇 下滑添加任务",
+                fontSize = 12.sp,
+                color = Color.Gray
+            )
         }
         
-        // Expandable content
         AnimatedVisibility(
             visible = isExpanded,
             enter = slideInVertically(initialOffsetY = { -200 }),
@@ -98,19 +91,15 @@ fun CollapsibleDashboard(
                     .border(
                         1.dp,
                         if (isDark) DarkLine else LightLine,
-                        RoundedCornerShape(14.dp)
+                        shape = RoundedCornerShape(14.dp)
                     )
                     .padding(4.dp)
             ) {
-                // Input row
                 TextField(
                     value = title,
                     onValueChange = { title = it },
                     placeholder = { 
-                        Text(
-                            "添加新任务...",
-                            color = Color.Gray.copy(alpha = 0.6f)
-                        )
+                        Text("添加新任务...", color = Color.Gray.copy(alpha = 0.6f))
                     },
                     modifier = Modifier
                         .fillMaxWidth()
@@ -124,7 +113,6 @@ fun CollapsibleDashboard(
                     singleLine = true
                 )
                 
-                // Action row
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -133,7 +121,6 @@ fun CollapsibleDashboard(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    // Value input
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(2.dp)
@@ -169,7 +156,6 @@ fun CollapsibleDashboard(
                         )
                     }
                     
-                    // Divider
                     Box(
                         modifier = Modifier
                             .width(1.dp)
@@ -177,7 +163,6 @@ fun CollapsibleDashboard(
                             .background(if (isDark) DarkLine else LightLine)
                     )
                     
-                    // Mode toggle
                     Text(
                         text = if (mode == "focus") "ONCE" else "STORE",
                         fontSize = 11.sp,
@@ -193,7 +178,6 @@ fun CollapsibleDashboard(
                             .padding(horizontal = 8.dp)
                     )
                     
-                    // Add button
                     androidx.compose.material3.IconButton(
                         onClick = {
                             if (title.isNotBlank() && value.isNotBlank()) {
