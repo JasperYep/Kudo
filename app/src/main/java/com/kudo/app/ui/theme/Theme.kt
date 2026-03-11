@@ -7,6 +7,7 @@ import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.SideEffect
 import androidx.compose.ui.graphics.Color
+import com.kudo.app.core.repository.KudoStateRepository
 import com.google.accompanist.systemuicontroller.rememberSystemUiController
 
 private val LightColorScheme = lightColorScheme(
@@ -37,9 +38,14 @@ private val DarkColorScheme = darkColorScheme(
 
 @Composable
 fun KudoTheme(
-    darkTheme: Boolean = isSystemInDarkTheme(),
+    themeMode: String = KudoStateRepository.THEME_SYSTEM,
     content: @Composable () -> Unit
 ) {
+    val darkTheme = when (themeMode) {
+        KudoStateRepository.THEME_LIGHT -> false
+        KudoStateRepository.THEME_DARK -> true
+        else -> isSystemInDarkTheme()
+    }
     val colorScheme = if (darkTheme) DarkColorScheme else LightColorScheme
     
     val systemUiController = rememberSystemUiController()

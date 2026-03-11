@@ -1,7 +1,6 @@
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
-    id("com.google.devtools.ksp")
 }
 
 android {
@@ -24,6 +23,7 @@ android {
     buildTypes {
         release {
             isMinifyEnabled = true
+            isShrinkResources = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
@@ -63,6 +63,7 @@ dependencies {
     implementation("androidx.core:core-ktx:1.12.0")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.6.2")
     implementation("androidx.activity:activity-compose:1.8.1")
+    implementation("org.burnoutcrew.composereorderable:reorderable:0.9.6")
     
     // Compose
     implementation(platform("androidx.compose:compose-bom:2023.10.01"))
@@ -76,13 +77,9 @@ dependencies {
     // Accompanist (for system UI controller)
     implementation("com.google.accompanist:accompanist-systemuicontroller:0.32.0")
     
-    // Room Database
-    implementation("androidx.room:room-runtime:2.6.1")
-    implementation("androidx.room:room-ktx:2.6.1")
-    ksp("androidx.room:room-compiler:2.6.1")
-    
     // DataStore (替代 SharedPreferences)
     implementation("androidx.datastore:datastore-preferences:1.0.0")
+    implementation("androidx.profileinstaller:profileinstaller:1.4.1")
     
     // Coroutines
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")

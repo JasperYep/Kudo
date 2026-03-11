@@ -1,0 +1,219 @@
+{
+  "coins": 48192,
+  "life": 384400,
+  "maxCoins": 128900,
+  "multiplier": 1.78,
+  "listMode": "inbox",
+  "recentVals": [12, 28, 0, 54, 89, 21, 13, 144, 8, 0, 34, 55, 233, 13, 5, 89, 3, 2, 144, 377, 21, 34, 0, 55, 89, 13, 144, 1, 233, 34, 610, 8],
+  "tasks": [
+    { "id": 9101001, "title": "Habit · Morning planning", "val": 28, "type": 1, "count": 46, "last": 1773110400000, "list": "focus", "order": 4001 },
+    { "id": 9101002, "title": "Habit · Deep work block 90m", "val": 42, "type": 1, "count": 31, "last": 1773106800000, "list": "focus", "order": 4002 },
+    { "id": 9101003, "title": "Habit · Inbox zero pass", "val": 18, "type": 1, "count": 19, "last": 1773020400000, "list": "focus", "order": 4003 },
+    { "id": 9101004, "title": "Habit · Walk 8k steps", "val": 24, "type": 1, "count": 67, "last": 1773092400000, "list": "focus", "order": 4004 },
+    { "id": 9101005, "title": "Habit · 深蹲 50", "val": 35, "type": 1, "count": 23, "last": 1773002400000, "list": "focus", "order": 4005 },
+    { "id": 9101006, "title": "Habit · Language review", "val": 16, "type": 1, "count": 14, "last": 1772916000000, "list": "focus", "order": 4006 },
+    { "id": 9101007, "title": "Habit · Water tracker", "val": 10, "type": 1, "count": 73, "last": 1773112200000, "list": "focus", "order": 4007 },
+    { "id": 9101008, "title": "Habit · Stretch + mobility", "val": 20, "type": 1, "count": 12, "last": 0, "list": "focus", "order": 4008 },
+
+    { "id": 9102001, "title": "Finish Android parity drag polish", "val": 160, "type": 0, "count": 0, "last": 0, "list": "focus", "order": 5001 },
+    { "id": 9102002, "title": "Audit import/export SAF edge cases", "val": 120, "type": 0, "count": 0, "last": 0, "list": "focus", "order": 5002 },
+    { "id": 9102003, "title": "Refactor task reducer undo branch", "val": 90, "type": 0, "count": 0, "last": 0, "list": "focus", "order": 5003 },
+    { "id": 9102004, "title": "Write release notes draft v0.8.3", "val": 48, "type": 0, "count": 0, "last": 0, "list": "focus", "order": 5004 },
+    { "id": 9102005, "title": "Clean widget spacing regression", "val": 75, "type": 0, "count": 0, "last": 0, "list": "focus", "order": 5005 },
+    { "id": 9102006, "title": "Prepare 40 screenshot set", "val": 110, "type": 0, "count": 0, "last": 0, "list": "focus", "order": 5006 },
+    { "id": 9102007, "title": "Test dark theme contrast matrix", "val": 56, "type": 0, "count": 0, "last": 0, "list": "focus", "order": 5007 },
+
+    { "id": 9103001, "title": "Inbox · Chase flaky reorder bug report", "val": 0, "type": 0, "count": 0, "last": 0, "list": "inbox", "order": 6001 },
+    { "id": 9103002, "title": "Inbox · Review PWA screenshot deltas", "val": 22, "type": 0, "count": 0, "last": 0, "list": "inbox", "order": 6002 },
+    { "id": 9103003, "title": "Inbox · Migrate old backups", "val": 45, "type": 0, "count": 0, "last": 0, "list": "inbox", "order": 6003 },
+    { "id": 9103004, "title": "Inbox · Buy USB-C dock", "val": 12, "type": 0, "count": 0, "last": 0, "list": "inbox", "order": 6004 },
+    { "id": 9103005, "title": "Inbox · Validate Chinese copywriting", "val": 38, "type": 0, "count": 0, "last": 0, "list": "inbox", "order": 6005 },
+    { "id": 9103006, "title": "Inbox · Empty challenge with 0 reward", "val": 0, "type": 0, "count": 0, "last": 0, "list": "inbox", "order": 6006 },
+    { "id": 9103007, "title": "Inbox · Long-form architecture memo", "val": 210, "type": 0, "count": 0, "last": 0, "list": "inbox", "order": 6007 }
+  ],
+  "store": [
+    { "id": 9104001, "title": "Reward · Single origin coffee", "cost": 180, "type": 1 },
+    { "id": 9104002, "title": "Reward · Movie night", "cost": 420, "type": 0 },
+    { "id": 9104003, "title": "Reward · Mechanical keyboard keycap set", "cost": 2400, "type": 0 },
+    { "id": 9104004, "title": "Reward · Extra gaming hour", "cost": 260, "type": 1 },
+    { "id": 9104005, "title": "Reward · Fancy ramen lunch", "cost": 520, "type": 1 },
+    { "id": 9104006, "title": "Reward · Noise-canceling upgrade fund", "cost": 8000, "type": 0 },
+    { "id": 9104007, "title": "Reward · Manual espresso beans", "cost": 120, "type": 1 },
+    { "id": 9104008, "title": "Reward · Weekend road trip jar", "cost": 5000, "type": 1 },
+    { "id": 9104009, "title": "Reward · 4K monitor arm", "cost": 3600, "type": 0 },
+    { "id": 9104010, "title": "Reward · Vinyl record", "cost": 330, "type": 1 },
+    { "id": 9104011, "title": "Reward · New fountain pen ink", "cost": 290, "type": 1 },
+    { "id": 9104012, "title": "Reward · Cheesecake slice", "cost": 95, "type": 1 }
+  ],
+  "logs": [
+    {
+      "t": 1773114000000,
+      "txt": "Habit · Water tracker",
+      "v": 31,
+      "type": "task",
+      "taskId": 9101007,
+      "isHabit": true,
+      "itemData": { "id": 9101007, "title": "Habit · Water tracker", "val": 10, "type": 1, "count": 73, "last": 1773112200000, "list": "focus", "order": 4007 }
+    },
+    {
+      "t": 1773110400000,
+      "txt": "Habit · Morning planning",
+      "v": 53,
+      "type": "task",
+      "taskId": 9101001,
+      "isHabit": true,
+      "itemData": { "id": 9101001, "title": "Habit · Morning planning", "val": 28, "type": 1, "count": 46, "last": 1773110400000, "list": "focus", "order": 4001 }
+    },
+    {
+      "t": 1773108600000,
+      "txt": "Reward · Manual espresso beans",
+      "v": -120,
+      "type": "store",
+      "itemData": { "id": 9104007, "title": "Reward · Manual espresso beans", "cost": 120, "type": 1 }
+    },
+    {
+      "t": 1773106800000,
+      "txt": "Habit · Deep work block 90m",
+      "v": 79,
+      "type": "task",
+      "taskId": 9101002,
+      "isHabit": true,
+      "itemData": { "id": 9101002, "title": "Habit · Deep work block 90m", "val": 42, "type": 1, "count": 31, "last": 1773106800000, "list": "focus", "order": 4002 }
+    },
+    {
+      "t": 1773102000000,
+      "txt": "Close 14 stale PR reviews",
+      "v": 432,
+      "type": "task",
+      "taskId": 9105001,
+      "itemData": { "id": 9105001, "title": "Close 14 stale PR reviews", "val": 230, "type": 0, "count": 0, "last": 0, "list": "focus", "order": 7001 }
+    },
+    {
+      "t": 1773099600000,
+      "txt": "Reward · Cheesecake slice",
+      "v": -95,
+      "type": "store",
+      "itemData": { "id": 9104012, "title": "Reward · Cheesecake slice", "cost": 95, "type": 1 }
+    },
+    {
+      "t": 1773092400000,
+      "txt": "Habit · Walk 8k steps",
+      "v": 45,
+      "type": "task",
+      "taskId": 9101004,
+      "isHabit": true,
+      "itemData": { "id": 9101004, "title": "Habit · Walk 8k steps", "val": 24, "type": 1, "count": 67, "last": 1773092400000, "list": "focus", "order": 4004 }
+    },
+    {
+      "t": 1773087000000,
+      "txt": "Spec import/export regression matrix",
+      "v": 225,
+      "type": "task",
+      "taskId": 9105002,
+      "itemData": { "id": 9105002, "title": "Spec import/export regression matrix", "val": 120, "type": 0, "count": 0, "last": 0, "list": "focus", "order": 7002 }
+    },
+    {
+      "t": 1773083400000,
+      "txt": "Reward · Movie night",
+      "v": -420,
+      "type": "store",
+      "itemData": { "id": 9104002, "title": "Reward · Movie night", "cost": 420, "type": 0 }
+    },
+    {
+      "t": 1773078000000,
+      "txt": "Habit · Inbox zero pass",
+      "v": 34,
+      "type": "task",
+      "taskId": 9101003,
+      "isHabit": true,
+      "itemData": { "id": 9101003, "title": "Habit · Inbox zero pass", "val": 18, "type": 1, "count": 19, "last": 1773020400000, "list": "focus", "order": 4003 }
+    },
+    {
+      "t": 1773074400000,
+      "txt": "Reward · Extra gaming hour",
+      "v": -260,
+      "type": "store",
+      "itemData": { "id": 9104004, "title": "Reward · Extra gaming hour", "cost": 260, "type": 1 }
+    },
+    {
+      "t": 1773069000000,
+      "txt": "Ship compose SAF hotfix",
+      "v": 338,
+      "type": "task",
+      "taskId": 9105003,
+      "itemData": { "id": 9105003, "title": "Ship compose SAF hotfix", "val": 180, "type": 0, "count": 0, "last": 0, "list": "focus", "order": 7003 }
+    },
+    {
+      "t": 1773061800000,
+      "txt": "Habit · 深蹲 50",
+      "v": 66,
+      "type": "task",
+      "taskId": 9101005,
+      "isHabit": true,
+      "itemData": { "id": 9101005, "title": "Habit · 深蹲 50", "val": 35, "type": 1, "count": 23, "last": 1773002400000, "list": "focus", "order": 4005 }
+    },
+    {
+      "t": 1773058200000,
+      "txt": "Reward · Vinyl record",
+      "v": -330,
+      "type": "store",
+      "itemData": { "id": 9104010, "title": "Reward · Vinyl record", "cost": 330, "type": 1 }
+    },
+    {
+      "t": 1773049200000,
+      "txt": "Write parity checklist delta summary",
+      "v": 113,
+      "type": "task",
+      "taskId": 9105004,
+      "itemData": { "id": 9105004, "title": "Write parity checklist delta summary", "val": 60, "type": 0, "count": 0, "last": 0, "list": "focus", "order": 7004 }
+    },
+    {
+      "t": 1773043800000,
+      "txt": "Habit · Language review",
+      "v": 30,
+      "type": "task",
+      "taskId": 9101006,
+      "isHabit": true,
+      "itemData": { "id": 9101006, "title": "Habit · Language review", "val": 16, "type": 1, "count": 14, "last": 1772916000000, "list": "focus", "order": 4006 }
+    },
+    {
+      "t": 1773036600000,
+      "txt": "Reward · Fancy ramen lunch",
+      "v": -520,
+      "type": "store",
+      "itemData": { "id": 9104005, "title": "Reward · Fancy ramen lunch", "cost": 520, "type": 1 }
+    },
+    {
+      "t": 1773029400000,
+      "txt": "Investigate reorder pointer deadzone",
+      "v": 270,
+      "type": "task",
+      "taskId": 9105005,
+      "itemData": { "id": 9105005, "title": "Investigate reorder pointer deadzone", "val": 144, "type": 0, "count": 0, "last": 0, "list": "focus", "order": 7005 }
+    },
+    {
+      "t": 1773020400000,
+      "txt": "Habit · Stretch + mobility",
+      "v": 37,
+      "type": "task",
+      "taskId": 9101008,
+      "isHabit": true,
+      "itemData": { "id": 9101008, "title": "Habit · Stretch + mobility", "val": 20, "type": 1, "count": 11, "last": 1773020400000, "list": "focus", "order": 4008 }
+    },
+    {
+      "t": 1773015000000,
+      "txt": "Reward · New fountain pen ink",
+      "v": -290,
+      "type": "store",
+      "itemData": { "id": 9104011, "title": "Reward · New fountain pen ink", "cost": 290, "type": 1 }
+    },
+    {
+      "t": 1773009600000,
+      "txt": "Finalize dense store card spacing",
+      "v": 188,
+      "type": "task",
+      "taskId": 9105006,
+      "itemData": { "id": 9105006, "title": "Finalize dense store card spacing", "val": 100, "type": 0, "count": 0, "last": 0, "list": "focus", "order": 7006 }
+    }
+  ]
+}
