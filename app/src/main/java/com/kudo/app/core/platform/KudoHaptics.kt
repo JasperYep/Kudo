@@ -1,7 +1,6 @@
 package com.kudo.app.core.platform
 
 import android.content.Context
-import android.os.Build
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
@@ -9,30 +8,36 @@ import android.os.VibratorManager
 class KudoHaptics(context: Context) {
 
     private val vibrator: Vibrator? = when {
-        Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
+        android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S -> {
             val manager = context.getSystemService(VibratorManager::class.java)
             manager?.defaultVibrator
         }
 
-        else -> @Suppress("DEPRECATION")
-        context.getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator
+        else -> context.getSystemService(Vibrator::class.java)
     }
 
     fun vibrate(durationMs: Long) {
         val target = vibrator ?: return
         if (!target.hasVibrator()) return
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            target.vibrate(
-                VibrationEffect.createOneShot(
-                    durationMs,
-                    VibrationEffect.DEFAULT_AMPLITUDE
-                )
+        target.vibrate(
+            VibrationEffect.createOneShot(
+                durationMs,
+                VibrationEffect.DEFAULT_AMPLITUDE
             )
-        } else {
-            @Suppress("DEPRECATION")
-            target.vibrate(durationMs)
-        }
+        )
+    }
+
+    fun vibrateDoubleTick() {
+        val target = vibrator ?: return
+        if (!target.hasVibrator()) return
+
+        target.vibrate(
+            VibrationEffect.createWaveform(
+                longArrayOf(0, 24, 52, 10),
+                intArrayOf(0, 255, 0, 90),
+                -1
+            )
+        )
     }
 }
-

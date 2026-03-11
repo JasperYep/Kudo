@@ -10,12 +10,12 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.MutableTransitionState
 import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.animateIntOffsetAsState
@@ -108,8 +108,11 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -120,6 +123,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
@@ -129,11 +133,9 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
-import androidx.compose.ui.input.nestedscroll.NestedScrollSource
-import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.changedToUpIgnoreConsumed
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.platform.LocalDensity
@@ -145,7 +147,6 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
-import androidx.compose.ui.unit.Velocity
 import com.kudo.app.core.platform.KudoHaptics
 import com.kudo.app.core.model.KudoLogEntry
 import com.kudo.app.core.model.KudoState
@@ -182,11 +183,11 @@ import com.kudo.app.ui.viewmodel.EditingTarget
 import com.kudo.app.ui.viewmodel.KudoUiState
 import com.kudo.app.ui.viewmodel.KudoViewModel
 import com.kudo.app.ui.viewmodel.TaskCreationTarget
-import java.text.SimpleDateFormat
-import java.util.Calendar
-import java.util.Date
+import java.time.Instant
+import java.time.LocalDate
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 import java.util.Locale
-import kotlin.math.abs
 import kotlin.math.roundToInt
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -212,102 +213,17 @@ fun HomeScreen(
     var taskDraftValue by rememberSaveable { mutableStateOf("") }
     var storeDraftTitle by rememberSaveable { mutableStateOf("") }
     var storeDraftValue by rememberSaveable { mutableStateOf("") }
-    var isComposerExpanded by rememberSaveable { mutableStateOf(false) }
     var pendingImportUri by remember { mutableStateOf<Uri?>(null) }
     var isFileTransferInProgress by remember { mutableStateOf(false) }
-    var pullToAddDistance by remember { mutableStateOf(0f) }
-    var collapseComposerDistance by remember { mutableStateOf(0f) }
-
-    val isStoreView = uiState.currentView == KudoViewModel.VIEW_STORE
-    val dashboardTitle = if (isStoreView) storeDraftTitle else taskDraftTitle
-    val dashboardValue = if (isStoreView) storeDraftValue else taskDraftValue
+    var activeComposerRevealProgress by remember { mutableFloatStateOf(0f) }
     val tasksListState = rememberLazyListState()
     val storeListState = rememberLazyListState()
     val logListState = rememberLazyListState()
-    val canShowComposer = uiState.currentView != KudoViewModel.VIEW_LOG
-    val activeListState = when (uiState.currentView) {
-        KudoViewModel.VIEW_TASKS -> tasksListState
-        KudoViewModel.VIEW_STORE -> storeListState
-        else -> logListState
+    LaunchedEffect(uiState.currentView) {
+        activeComposerRevealProgress = 0f
     }
-    val isActiveListAtTop = activeListState.firstVisibleItemIndex == 0 &&
-        activeListState.firstVisibleItemScrollOffset == 0
-    val density = LocalDensity.current
-    val pullThresholdPx = with(density) { 48.dp.toPx() }
-    val collapseThresholdPx = with(density) { 40.dp.toPx() }
-    val blankTapSlopPx = with(density) { 8.dp.toPx() }
-    val pullHintAlpha = ((pullToAddDistance / pullThresholdPx) * 0.45f + 0.2f)
+    val pullHintAlpha = ((activeComposerRevealProgress * 0.45f) + 0.2f)
         .coerceIn(0.2f, 0.55f)
-    val composerExpandEasing = remember { CubicBezierEasing(0.22f, 1f, 0.36f, 1f) }
-    val composerCollapseEasing = remember { CubicBezierEasing(0.4f, 0f, 0.2f, 1f) }
-    fun collapseComposer() {
-        isComposerExpanded = false
-        pullToAddDistance = 0f
-        collapseComposerDistance = 0f
-    }
-    val pullToAddConnection = remember(
-        canShowComposer,
-        isComposerExpanded,
-        isActiveListAtTop,
-        pullThresholdPx,
-        collapseThresholdPx
-    ) {
-        object : NestedScrollConnection {
-            override fun onPreScroll(
-                available: Offset,
-                source: NestedScrollSource
-            ): Offset {
-                if (!canShowComposer || source != NestedScrollSource.Drag) {
-                    return Offset.Zero
-                }
-
-                if (isComposerExpanded) {
-                    when {
-                        available.y < 0f -> {
-                            collapseComposerDistance = (collapseComposerDistance - available.y)
-                                .coerceAtMost(collapseThresholdPx * 1.5f)
-                            pullToAddDistance = 0f
-                            if (collapseComposerDistance >= collapseThresholdPx) {
-                                collapseComposer()
-                            }
-                        }
-
-                        available.y > 0f -> {
-                            collapseComposerDistance = 0f
-                        }
-                    }
-                    return Offset.Zero
-                }
-
-                collapseComposerDistance = 0f
-                if (!isActiveListAtTop || available.y <= 0f) {
-                    if (available.y < 0f) {
-                        pullToAddDistance = 0f
-                    }
-                    return Offset.Zero
-                }
-
-                pullToAddDistance = (pullToAddDistance + available.y)
-                    .coerceIn(0f, pullThresholdPx * 1.2f)
-                return Offset(0f, available.y)
-            }
-
-            override suspend fun onPreFling(available: Velocity): Velocity {
-                if (!canShowComposer) {
-                    collapseComposerDistance = 0f
-                    pullToAddDistance = 0f
-                    return Velocity.Zero
-                }
-
-                if (!isComposerExpanded && pullToAddDistance >= pullThresholdPx) {
-                    isComposerExpanded = true
-                }
-                collapseComposerDistance = 0f
-                pullToAddDistance = 0f
-                return Velocity.Zero
-            }
-        }
-    }
     val exportLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.CreateDocument("application/json")
     ) { uri ->
@@ -342,151 +258,106 @@ fun HomeScreen(
             )
         }
     ) { innerPadding ->
-        Box(
+        Column(
             modifier = Modifier
                 .fillMaxSize()
                 .background(palette.background)
                 .padding(innerPadding)
-                .nestedScroll(pullToAddConnection)
-                .pointerInput(isComposerExpanded, blankTapSlopPx) {
-                    if (!isComposerExpanded) return@pointerInput
-                    awaitEachGesture {
-                        val down = awaitFirstDown(
-                            requireUnconsumed = false,
-                            pass = PointerEventPass.Final
-                        )
-                        val start = down.position
-                        var tapEligible = !down.isConsumed
-
-                        while (true) {
-                            val event = awaitPointerEvent(pass = PointerEventPass.Final)
-                            val change = event.changes.firstOrNull { it.id == down.id } ?: continue
-                            val delta = change.position - start
-                            if ((delta.x * delta.x) + (delta.y * delta.y) > blankTapSlopPx * blankTapSlopPx) {
-                                tapEligible = false
-                            }
-                            if (change.isConsumed) {
-                                tapEligible = false
-                            }
-                            if (change.changedToUpIgnoreConsumed()) {
-                                if (tapEligible && !change.isConsumed) {
-                                    collapseComposer()
-                                }
-                                break
-                            }
-                        }
-                    }
-                }
         ) {
-            Column(
+            Header(
+                state = uiState.data,
+                palette = palette,
+                showPullHint = uiState.currentView != KudoViewModel.VIEW_LOG && activeComposerRevealProgress <= 0.02f,
+                pullHintAlpha = pullHintAlpha,
+                onOpenSettings = viewModel::openSettings
+            )
+
+            Box(
                 modifier = Modifier
-                    .fillMaxSize()
+                    .fillMaxWidth()
+                    .weight(1f)
             ) {
-                Header(
-                    state = uiState.data,
-                    palette = palette,
-                    showPullHint = canShowComposer && !isComposerExpanded,
-                    pullHintAlpha = pullHintAlpha,
-                    onOpenSettings = viewModel::openSettings
-                )
-
-                AnimatedVisibility(
-                    visible = uiState.currentView != KudoViewModel.VIEW_LOG && isComposerExpanded,
-                    enter = fadeIn(
-                        animationSpec = tween(
-                            durationMillis = 180,
-                            easing = composerExpandEasing
-                        )
-                    ) + expandVertically(
-                        expandFrom = Alignment.Top,
-                        animationSpec = tween(
-                            durationMillis = 320,
-                            easing = composerExpandEasing
-                        )
-                    ),
-                    exit = fadeOut(
-                        animationSpec = tween(
-                            durationMillis = 140,
-                            easing = composerCollapseEasing
-                        )
-                    ) + shrinkVertically(
-                        shrinkTowards = Alignment.Top,
-                        animationSpec = tween(
-                            durationMillis = 220,
-                            easing = composerCollapseEasing
-                        )
-                    )
-                ) {
-                    DashboardCard(
-                        uiState = uiState,
-                        palette = palette,
-                        title = dashboardTitle,
-                        value = dashboardValue,
-                        onTitleChange = {
-                            if (isStoreView) storeDraftTitle = it else taskDraftTitle = it
-                        },
-                        onValueChange = {
-                            val sanitized = it.filter(Char::isDigit)
-                            if (isStoreView) storeDraftValue = sanitized else taskDraftValue = sanitized
-                        },
-                        onModeToggle = {
-                            if (uiState.currentView == KudoViewModel.VIEW_STORE) {
-                                viewModel.toggleStoreMode()
-                            } else {
-                                viewModel.cycleTaskCreationTarget()
-                            }
-                        },
-                        onAdd = {
-                            if (viewModel.addDashboardItem(dashboardTitle, dashboardValue)) {
-                                collapseComposer()
-                                if (isStoreView) {
-                                    storeDraftTitle = ""
-                                    storeDraftValue = ""
-                                } else {
-                                    taskDraftTitle = ""
-                                    taskDraftValue = ""
-                                }
-                            }
-                        }
-                    )
-                }
-
                 when (uiState.currentView) {
-                    KudoViewModel.VIEW_TASKS -> TasksPage(
+                    KudoViewModel.VIEW_TASKS -> PullComposerPage(
                         uiState = uiState,
                         palette = palette,
-                        onToggleHabits = viewModel::toggleHabitsCollapsed,
-                        onSetListMode = viewModel::setListMode,
-                        onExitHabitJiggle = viewModel::exitHabitJiggleMode,
-                        onEnterHabitJiggle = viewModel::enterHabitJiggleMode,
-                        onDeleteHabit = viewModel::deleteTaskItem,
-                        onReorderTask = viewModel::reorderCurrentTaskList,
-                        onReorderHabits = viewModel::reorderHabits,
-                        onCompleteTask = viewModel::completeTask,
-                        onMoveTaskGesture = viewModel::moveTaskFromGesture,
-                        onEditTask = viewModel::openEditTask,
-                        onCompleteHabit = viewModel::completeHabit,
-                        listState = tasksListState
-                    )
+                        title = taskDraftTitle,
+                        value = taskDraftValue,
+                        listState = tasksListState,
+                        onTitleChange = { taskDraftTitle = it },
+                        onValueChange = { taskDraftValue = it.filter(Char::isDigit) },
+                        onModeToggle = viewModel::cycleTaskCreationTarget,
+                        onAdd = {
+                            if (viewModel.addDashboardItem(taskDraftTitle, taskDraftValue)) {
+                                taskDraftTitle = ""
+                                taskDraftValue = ""
+                                true
+                            } else {
+                                false
+                            }
+                        },
+                        onRevealProgressChanged = { activeComposerRevealProgress = it }
+                    ) {
+                        modifier ->
+                        TasksPage(
+                            uiState = uiState,
+                            palette = palette,
+                            modifier = modifier,
+                            onToggleHabits = viewModel::toggleHabitsCollapsed,
+                            onSetListMode = viewModel::setListMode,
+                            onExitHabitJiggle = viewModel::exitHabitJiggleMode,
+                            onEnterHabitJiggle = viewModel::enterHabitJiggleMode,
+                            onDeleteHabit = viewModel::deleteTaskItem,
+                            onReorderTask = viewModel::reorderCurrentTaskList,
+                            onReorderHabits = viewModel::reorderHabits,
+                            onCompleteTask = viewModel::completeTask,
+                            onMoveTaskGesture = viewModel::moveTaskFromGesture,
+                            onEditTask = viewModel::openEditTask,
+                            onCompleteHabit = viewModel::completeHabit,
+                            listState = tasksListState
+                        )
+                    }
 
-                    KudoViewModel.VIEW_STORE -> StorePage(
+                    KudoViewModel.VIEW_STORE -> PullComposerPage(
                         uiState = uiState,
                         palette = palette,
-                        onReorderStore = viewModel::reorderStore,
-                        onBuyGesture = viewModel::purchaseItemFromGesture,
-                        onEdit = viewModel::openEditStore,
-                        listState = storeListState
-                    )
+                        title = storeDraftTitle,
+                        value = storeDraftValue,
+                        listState = storeListState,
+                        onTitleChange = { storeDraftTitle = it },
+                        onValueChange = { storeDraftValue = it.filter(Char::isDigit) },
+                        onModeToggle = viewModel::toggleStoreMode,
+                        onAdd = {
+                            if (viewModel.addDashboardItem(storeDraftTitle, storeDraftValue)) {
+                                storeDraftTitle = ""
+                                storeDraftValue = ""
+                                true
+                            } else {
+                                false
+                            }
+                        },
+                        onRevealProgressChanged = { activeComposerRevealProgress = it }
+                    ) {
+                        modifier ->
+                        StorePage(
+                            uiState = uiState,
+                            palette = palette,
+                            modifier = modifier,
+                            onReorderStore = viewModel::reorderStore,
+                            onBuyGesture = viewModel::purchaseItemFromGesture,
+                            onEdit = viewModel::openEditStore,
+                            listState = storeListState
+                        )
+                    }
 
                     KudoViewModel.VIEW_LOG -> LogPage(
                         uiState = uiState,
                         palette = palette,
+                        modifier = Modifier.fillMaxSize(),
                         onUndo = viewModel::undoLog,
                         listState = logListState
                     )
                 }
-
-                Spacer(modifier = Modifier.height(24.dp))
             }
         }
     }
@@ -577,44 +448,363 @@ private data class KudoPalette(
 )
 
 private val HeaderHeight = 120.dp
+private const val HapticTickMs = 8L
+private const val HapticConfirmMs = 12L
+private const val HapticErrorMs = 24L
+
+private fun staticPalette(isDark: Boolean): KudoPalette {
+    return if (isDark) {
+        KudoPalette(
+            isDark = true,
+            background = DarkBackground,
+            card = DarkCard,
+            line = DarkLine,
+            textMain = DarkTextMain,
+            textSub = DarkTextSub,
+            green = DarkGreen,
+            greenBg = DarkGreenBg,
+            orange = DarkOrange,
+            orangeBg = DarkOrangeBg,
+            gold = DarkGold,
+            goldBg = DarkGoldBg,
+            blue = DarkBlue,
+            red = DarkRed
+        )
+    } else {
+        KudoPalette(
+            isDark = false,
+            background = LightBackground,
+            card = LightCard,
+            line = LightLine,
+            textMain = LightTextMain,
+            textSub = LightTextSub,
+            green = LightGreen,
+            greenBg = LightGreenBg,
+            orange = LightOrange,
+            orangeBg = LightOrangeBg,
+            gold = LightGold,
+            goldBg = LightGoldBg,
+            blue = LightBlue,
+            red = LightRed
+        )
+    }
+}
 
 @Composable
 private fun rememberPalette(isDark: Boolean): KudoPalette {
-    return remember(isDark) {
-        if (isDark) {
-            KudoPalette(
-                isDark = true,
-                background = DarkBackground,
-                card = DarkCard,
-                line = DarkLine,
-                textMain = DarkTextMain,
-                textSub = DarkTextSub,
-                green = DarkGreen,
-                greenBg = DarkGreenBg,
-                orange = DarkOrange,
-                orangeBg = DarkOrangeBg,
-                gold = DarkGold,
-                goldBg = DarkGoldBg,
-                blue = DarkBlue,
-                red = DarkRed
+    val target = staticPalette(isDark)
+    val animationSpec = tween<Color>(
+        durationMillis = 420,
+        easing = CubicBezierEasing(0.22f, 1f, 0.36f, 1f)
+    )
+
+    val background by animateColorAsState(target.background, animationSpec, label = "paletteBackground")
+    val card by animateColorAsState(target.card, animationSpec, label = "paletteCard")
+    val line by animateColorAsState(target.line, animationSpec, label = "paletteLine")
+    val textMain by animateColorAsState(target.textMain, animationSpec, label = "paletteTextMain")
+    val textSub by animateColorAsState(target.textSub, animationSpec, label = "paletteTextSub")
+    val green by animateColorAsState(target.green, animationSpec, label = "paletteGreen")
+    val greenBg by animateColorAsState(target.greenBg, animationSpec, label = "paletteGreenBg")
+    val orange by animateColorAsState(target.orange, animationSpec, label = "paletteOrange")
+    val orangeBg by animateColorAsState(target.orangeBg, animationSpec, label = "paletteOrangeBg")
+    val gold by animateColorAsState(target.gold, animationSpec, label = "paletteGold")
+    val goldBg by animateColorAsState(target.goldBg, animationSpec, label = "paletteGoldBg")
+    val blue by animateColorAsState(target.blue, animationSpec, label = "paletteBlue")
+    val red by animateColorAsState(target.red, animationSpec, label = "paletteRed")
+
+    return KudoPalette(
+        isDark = target.isDark,
+        background = background,
+        card = card,
+        line = line,
+        textMain = textMain,
+        textSub = textSub,
+        green = green,
+        greenBg = greenBg,
+        orange = orange,
+        orangeBg = orangeBg,
+        gold = gold,
+        goldBg = goldBg,
+        blue = blue,
+        red = red
+    )
+}
+
+@Composable
+private fun ComposerRevealPanel(
+    revealProgress: Float,
+    onMeasuredHeight: (Float) -> Unit,
+    content: @Composable () -> Unit
+) {
+    val density = LocalDensity.current
+    val revealOffsetPx = with(density) { 10.dp.toPx() }
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clipToBounds()
+            .layout { measurable, constraints ->
+                val placeable = measurable.measure(constraints)
+                onMeasuredHeight(placeable.height.toFloat())
+                val revealHeight = (placeable.height * revealProgress).roundToInt()
+                layout(placeable.width, revealHeight.coerceAtLeast(0)) {
+                    placeable.placeRelative(0, revealHeight - placeable.height)
+                }
+            }
+            .graphicsLayer {
+                clip = true
+                alpha = if (revealProgress <= 0f) 0f else lerpFloat(0.25f, 1f, revealProgress)
+                translationY = (1f - revealProgress) * revealOffsetPx
+            }
+    ) {
+        content()
+    }
+}
+
+@Composable
+private fun PullComposerPage(
+    uiState: KudoUiState,
+    palette: KudoPalette,
+    title: String,
+    value: String,
+    listState: LazyListState,
+    modifier: Modifier = Modifier,
+    onTitleChange: (String) -> Unit,
+    onValueChange: (String) -> Unit,
+    onModeToggle: () -> Unit,
+    onAdd: () -> Boolean,
+    onRevealProgressChanged: (Float) -> Unit,
+    content: @Composable (Modifier) -> Unit
+) {
+    var composerRevealTargetPx by remember { mutableFloatStateOf(0f) }
+    var composerMeasuredHeightPx by remember { mutableFloatStateOf(1f) }
+    var composerOpenHapticArmed by remember { mutableStateOf(true) }
+    var composerOpenHapticPending by remember { mutableStateOf(false) }
+
+    val isListAtTop by remember(listState) {
+        derivedStateOf {
+            !listState.canScrollBackward ||
+                (
+                    listState.firstVisibleItemIndex == 0 &&
+                        listState.firstVisibleItemScrollOffset <= 1
+                    )
+        }
+    }
+    val haptics = rememberKudoHaptics()
+    val density = LocalDensity.current
+    val estimatedComposerHeightPx = with(density) { 120.dp.toPx() }
+    val blankTapSlopPx = with(density) { 8.dp.toPx() }
+    val openTriggerDistancePx = with(density) { 72.dp.toPx() }
+    val closeTriggerDistancePx = with(density) { 52.dp.toPx() }
+    val composerMaxHeightPx = composerMeasuredHeightPx.takeIf { it > 1f } ?: estimatedComposerHeightPx
+    val composerClosedRearmProgress = 0.12f
+    val composerVisuallyExpandedProgress = 0.995f
+    val composerVisuallyExpandedPx = composerMaxHeightPx * composerVisuallyExpandedProgress
+    val resolvedComposerTargetPx = composerRevealTargetPx.coerceIn(0f, composerMaxHeightPx)
+    val composerRevealPx by animateFloatAsState(
+        targetValue = resolvedComposerTargetPx,
+        animationSpec = if (resolvedComposerTargetPx > 0f) {
+            spring(
+                stiffness = 420f,
+                dampingRatio = 0.84f,
+                visibilityThreshold = 0.25f
             )
         } else {
-            KudoPalette(
-                isDark = false,
-                background = LightBackground,
-                card = LightCard,
-                line = LightLine,
-                textMain = LightTextMain,
-                textSub = LightTextSub,
-                green = LightGreen,
-                greenBg = LightGreenBg,
-                orange = LightOrange,
-                orangeBg = LightOrangeBg,
-                gold = LightGold,
-                goldBg = LightGoldBg,
-                blue = LightBlue,
-                red = LightRed
+            spring(
+                stiffness = 880f,
+                dampingRatio = 0.92f,
+                visibilityThreshold = 0.25f
             )
+        },
+        label = "composerReveal"
+    )
+    val composerRevealProgress = if (composerMeasuredHeightPx > 0f) {
+        (composerRevealPx / composerMeasuredHeightPx).coerceIn(0f, 1f)
+    } else {
+        0f
+    }
+
+    fun triggerComposerOpenHaptic() {
+        composerOpenHapticPending = false
+        composerOpenHapticArmed = false
+        haptics.vibrate(HapticTickMs)
+    }
+
+    fun armComposerOpenHapticIfNeeded(currentReveal: Float, shouldExpand: Boolean) {
+        if (!shouldExpand || !composerOpenHapticArmed) {
+            composerOpenHapticPending = false
+            return
+        }
+
+        if (currentReveal >= composerVisuallyExpandedPx) {
+            triggerComposerOpenHaptic()
+        } else {
+            composerOpenHapticPending = true
+        }
+    }
+
+    fun openComposer() {
+        if (composerRevealTargetPx >= composerMaxHeightPx - 0.5f) {
+            return
+        }
+        composerRevealTargetPx = composerMaxHeightPx
+        armComposerOpenHapticIfNeeded(
+            currentReveal = composerRevealPx,
+            shouldExpand = true
+        )
+    }
+
+    fun collapseComposer() {
+        composerOpenHapticPending = false
+        composerRevealTargetPx = 0f
+    }
+
+    LaunchedEffect(composerRevealProgress) {
+        onRevealProgressChanged(composerRevealProgress)
+    }
+    DisposableEffect(Unit) {
+        onDispose { onRevealProgressChanged(0f) }
+    }
+    LaunchedEffect(
+        composerRevealProgress,
+        resolvedComposerTargetPx,
+        composerMaxHeightPx,
+        composerOpenHapticPending
+    ) {
+        val isVisuallyClosed = composerRevealProgress <= composerClosedRearmProgress
+        if (isVisuallyClosed && !composerOpenHapticPending) {
+            composerOpenHapticArmed = true
+            return@LaunchedEffect
+        }
+
+        val shouldTriggerOpenHaptic =
+            composerOpenHapticPending &&
+                resolvedComposerTargetPx >= composerVisuallyExpandedPx &&
+                composerRevealProgress >= composerVisuallyExpandedProgress
+        if (shouldTriggerOpenHaptic) {
+            triggerComposerOpenHaptic()
+        }
+    }
+
+    Box(
+        modifier = modifier
+            .fillMaxSize()
+            .background(palette.background)
+            .pointerInput(isListAtTop, composerRevealProgress) {
+                awaitEachGesture {
+                    val down = awaitFirstDown(
+                        requireUnconsumed = false,
+                        pass = PointerEventPass.Initial
+                    )
+                    val canOpenThisGesture = isListAtTop && composerRevealProgress <= 0.02f
+                    val canCloseThisGesture = composerRevealProgress >= 0.98f
+                    var pointerId = down.id
+                    var totalDx = 0f
+                    var totalDy = 0f
+                    var gestureHandled = false
+
+                    while (true) {
+                        val event = awaitPointerEvent(pass = PointerEventPass.Initial)
+                        val change = event.changes.firstOrNull { it.id == pointerId }
+                            ?: event.changes.firstOrNull()
+                            ?: break
+                        pointerId = change.id
+
+                        val delta = change.position - change.previousPosition
+                        totalDx += delta.x
+                        totalDy += delta.y
+
+                        if (!gestureHandled) {
+                            val verticalDistance = kotlin.math.abs(totalDy)
+                            val horizontalDistance = kotlin.math.abs(totalDx)
+                            val isVerticalGesture = verticalDistance > horizontalDistance
+
+                            if (isVerticalGesture && canOpenThisGesture && totalDy >= openTriggerDistancePx) {
+                                openComposer()
+                                change.consume()
+                                gestureHandled = true
+                            } else if (isVerticalGesture && canCloseThisGesture && totalDy <= -closeTriggerDistancePx) {
+                                collapseComposer()
+                                change.consume()
+                                gestureHandled = true
+                            }
+                        }
+
+                        if (change.changedToUpIgnoreConsumed()) {
+                            break
+                        }
+                    }
+                }
+            }
+            .pointerInput(composerRevealProgress, blankTapSlopPx) {
+                if (composerRevealProgress < 0.98f) return@pointerInput
+                awaitEachGesture {
+                    val down = awaitFirstDown(
+                        requireUnconsumed = false,
+                        pass = PointerEventPass.Final
+                    )
+                    val start = down.position
+                    var tapEligible = !down.isConsumed
+
+                    while (true) {
+                        val event = awaitPointerEvent(pass = PointerEventPass.Final)
+                        val change = event.changes.firstOrNull { it.id == down.id } ?: continue
+                        val delta = change.position - start
+                        if ((delta.x * delta.x) + (delta.y * delta.y) > blankTapSlopPx * blankTapSlopPx) {
+                            tapEligible = false
+                        }
+                        if (change.isConsumed) {
+                            tapEligible = false
+                        }
+                        if (change.changedToUpIgnoreConsumed()) {
+                            if (tapEligible && !change.isConsumed) {
+                                collapseComposer()
+                            }
+                            break
+                        }
+                    }
+                }
+            }
+    ) {
+        Column(
+            modifier = Modifier.fillMaxSize()
+        ) {
+            ComposerRevealPanel(
+                revealProgress = composerRevealProgress,
+                onMeasuredHeight = { measuredHeight ->
+                    if (measuredHeight > 1f) {
+                        composerMeasuredHeightPx = measuredHeight
+                        composerRevealTargetPx = composerRevealTargetPx
+                            .coerceIn(0f, measuredHeight)
+                    }
+                }
+            ) {
+                DashboardCard(
+                    uiState = uiState,
+                    palette = palette,
+                    revealProgress = composerRevealProgress,
+                    title = title,
+                    value = value,
+                    onTitleChange = onTitleChange,
+                    onValueChange = onValueChange,
+                    onModeToggle = onModeToggle,
+                    onAdd = {
+                        val added = onAdd()
+                        if (added) {
+                            collapseComposer()
+                        }
+                        added
+                    }
+                )
+            }
+
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
+            ) {
+                content(Modifier.fillMaxSize())
+            }
         }
     }
 }
@@ -761,13 +951,15 @@ private fun Header(
 private fun DashboardCard(
     uiState: KudoUiState,
     palette: KudoPalette,
+    revealProgress: Float,
     title: String,
     value: String,
     onTitleChange: (String) -> Unit,
     onValueChange: (String) -> Unit,
     onModeToggle: () -> Unit,
-    onAdd: () -> Unit
+    onAdd: () -> Boolean
 ) {
+    val haptics = rememberKudoHaptics()
     val titlePlaceholder = when {
         uiState.currentView == KudoViewModel.VIEW_STORE -> "Add to Store..."
         uiState.taskCreationTarget == TaskCreationTarget.HABIT -> "Add Habit..."
@@ -796,6 +988,9 @@ private fun DashboardCard(
         value.isBlank() || value == "0" -> palette.textSub
         else -> palette.green
     }
+    val addButtonProgress = revealProgress.coerceIn(0f, 1f)
+    val addButtonScale = lerpFloat(0.7f, 1f, addButtonProgress)
+    val addButtonAlpha = lerpFloat(0.56f, 1f, addButtonProgress)
     val interactionSource = remember { MutableInteractionSource() }
 
     Card(
@@ -879,19 +1074,30 @@ private fun DashboardCard(
                         .clickable(
                             interactionSource = interactionSource,
                             indication = null
-                        ) { onModeToggle() }
+                        ) {
+                            haptics.vibrate(HapticTickMs)
+                            onModeToggle()
+                        }
                         .padding(horizontal = 8.dp)
                 )
 
                 Box(
                     modifier = Modifier
                         .size(32.dp)
+                        .graphicsLayer {
+                            scaleX = addButtonScale
+                            scaleY = addButtonScale
+                            alpha = addButtonAlpha
+                        }
                         .clip(RoundedCornerShape(10.dp))
                         .background(palette.textMain)
                         .clickable(
                             interactionSource = remember { MutableInteractionSource() },
                             indication = null
-                        ) { onAdd() },
+                        ) {
+                            val added = onAdd()
+                            haptics.vibrate(if (added) HapticConfirmMs else HapticErrorMs)
+                        },
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
@@ -910,6 +1116,7 @@ private fun DashboardCard(
 private fun TasksPage(
     uiState: KudoUiState,
     palette: KudoPalette,
+    modifier: Modifier = Modifier,
     onToggleHabits: () -> Unit,
     onSetListMode: (String) -> Unit,
     onExitHabitJiggle: () -> Unit,
@@ -978,8 +1185,7 @@ private fun TasksPage(
 
         LazyColumn(
             state = state.listState,
-            modifier = Modifier
-                .fillMaxSize()
+            modifier = modifier
                 .reorderable(state)
         ) {
         if (habits.isNotEmpty()) {
@@ -1033,13 +1239,17 @@ private fun TasksPage(
             item(key = "empty_${uiState.data.listMode}") {
                 Box(
                     modifier = Modifier
-                        .fillParentMaxHeight()
                         .fillMaxWidth()
-                        .clickable(
-                            enabled = uiState.isHabitJiggleMode,
-                            interactionSource = remember { MutableInteractionSource() },
-                            indication = null
-                        ) { onExitHabitJiggle() }
+                        .then(
+                            if (uiState.isHabitJiggleMode) {
+                                Modifier.clickable(
+                                    interactionSource = remember { MutableInteractionSource() },
+                                    indication = null
+                                ) { onExitHabitJiggle() }
+                            } else {
+                                Modifier
+                            }
+                        )
                 ) {
                     EmptyState(
                         text = "Empty ${uiState.data.listMode}",
@@ -1142,6 +1352,7 @@ private fun TasksPage(
 private fun StorePage(
     uiState: KudoUiState,
     palette: KudoPalette,
+    modifier: Modifier = Modifier,
     onReorderStore: (List<Long>) -> Unit,
     onBuyGesture: (Long) -> Boolean,
     onEdit: (Long) -> Unit,
@@ -1171,16 +1382,17 @@ private fun StorePage(
         },
         listState = listState,
         onDragEnd = { _, _ ->
-            haptics.vibrate(8)
-            onReorderStore(localStore.map { it.id })
+            if (localStore.map(KudoStoreItem::id) != uiState.data.store.map(KudoStoreItem::id)) {
+                haptics.vibrate(8)
+                onReorderStore(localStore.map(KudoStoreItem::id))
+            }
         },
         maxScrollPerFrame = 56.dp
     )
 
     LazyColumn(
         state = state.listState,
-        modifier = Modifier
-            .fillMaxSize()
+        modifier = modifier
             .reorderable(state)
     ) {
         item {
@@ -1477,24 +1689,27 @@ private fun StackInsertItem(
 private fun LogPage(
     uiState: KudoUiState,
     palette: KudoPalette,
+    modifier: Modifier = Modifier,
     onUndo: (Int) -> Unit,
     listState: LazyListState
 ) {
     if (uiState.data.logs.isEmpty()) {
-        Column(modifier = Modifier.fillMaxSize()) {
+        Column(modifier = modifier.fillMaxSize()) {
             TrendChart(logs = uiState.data.logs, palette = palette)
             EmptyState(text = "No history", palette = palette)
         }
         return
     }
 
-    val grouped = uiState.data.logs
-        .mapIndexed { index, log -> index to log }
-        .groupBy { formatDayHeader(it.second.timestamp) }
+    val grouped = remember(uiState.data.logs) {
+        uiState.data.logs
+            .mapIndexed { index, log -> index to log }
+            .groupBy { formatDayHeader(it.second.timestamp) }
+    }
 
     LazyColumn(
         state = listState,
-        modifier = Modifier.fillMaxSize()
+        modifier = modifier
     ) {
         item {
             TrendChart(logs = uiState.data.logs, palette = palette)
@@ -1510,7 +1725,10 @@ private fun LogPage(
                     modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp)
                 )
             }
-            items(entries) { (index, log) ->
+            items(
+                items = entries,
+                key = { (_, log) -> log.timestamp }
+            ) { (index, log) ->
                 Box(modifier = Modifier.padding(horizontal = 16.dp, vertical = 1.dp)) {
                     LogRow(
                         log = log,
@@ -1544,7 +1762,11 @@ private fun SectionHeader(
             .fillMaxWidth()
             .padding(horizontal = 20.dp, vertical = 10.dp)
             .then(
-                if (onClick != null) Modifier.clickable { onClick() } else Modifier
+                if (onClick != null) {
+                    Modifier.clickable { onClick() }
+                } else {
+                    Modifier
+                }
             ),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
@@ -1577,7 +1799,7 @@ private fun FocusInboxSwitcher(
     onSetListMode: (String) -> Unit
 ) {
     val focusSelected = currentMode == KudoState.LIST_FOCUS
-    var trackWidthPx by remember { mutableStateOf(1f) }
+    var trackWidthPx by remember { mutableFloatStateOf(1f) }
     val thumbOffsetProgress by animateFloatAsState(
         targetValue = if (focusSelected) 0f else 1f,
         animationSpec = tween(durationMillis = 220),
@@ -1620,7 +1842,11 @@ private fun FocusInboxSwitcher(
                     .weight(1f)
                     .clip(RoundedCornerShape(10.dp))
                     .background(if (focusSelected) palette.card else Color.Transparent)
-                    .clickable { onSetListMode(KudoState.LIST_FOCUS) }
+                    .clickable {
+                        if (!focusSelected) {
+                            onSetListMode(KudoState.LIST_FOCUS)
+                        }
+                    }
                     .padding(vertical = 8.dp),
                 contentAlignment = Alignment.Center
             ) {
@@ -1636,7 +1862,11 @@ private fun FocusInboxSwitcher(
                     .weight(1f)
                     .clip(RoundedCornerShape(10.dp))
                     .background(if (!focusSelected) palette.card else Color.Transparent)
-                    .clickable { onSetListMode(KudoState.LIST_INBOX) }
+                    .clickable {
+                        if (focusSelected) {
+                            onSetListMode(KudoState.LIST_INBOX)
+                        }
+                    }
                     .padding(vertical = 8.dp),
                 contentAlignment = Alignment.Center
             ) {
@@ -1650,6 +1880,24 @@ private fun FocusInboxSwitcher(
         }
     }
 }
+
+private val HabitChargePattern = listOf(
+    0L to 2L,
+    80L to 3L,
+    160L to 3L,
+    240L to 4L,
+    320L to 4L,
+    400L to 4L,
+    480L to 5L,
+    560L to 5L,
+    640L to 5L,
+    720L to 6L,
+    800L to 6L,
+    880L to 6L,
+    960L to 7L,
+    1040L to 7L,
+    1120L to 7L
+)
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -1750,25 +1998,8 @@ private fun HabitChip(
                     animationSpec = tween(durationMillis = 1500, easing = LinearEasing)
                 )
             }
-            val pattern = listOf(
-                0L to 2L,
-                80L to 3L,
-                160L to 3L,
-                240L to 4L,
-                320L to 4L,
-                400L to 4L,
-                480L to 5L,
-                560L to 5L,
-                640L to 5L,
-                720L to 6L,
-                800L to 6L,
-                880L to 6L,
-                960L to 7L,
-                1040L to 7L,
-                1120L to 7L
-            )
             var previous = 0L
-            pattern.forEach { (time, duration) ->
+            HabitChargePattern.forEach { (time, duration) ->
                 delay(time - previous)
                 previous = time
                 if (isActive) {
@@ -1902,6 +2133,7 @@ private fun TaskRow(
     onMoveGesture: () -> Boolean,
     onEdit: () -> Unit
 ) {
+    val haptics = rememberKudoHaptics()
     val reward = (task.valAmount * finalMultiplier).toInt()
     val canMoveTask = task.list != KudoState.LIST_INBOX || task.valAmount > 0
     SwipeActionCard(
@@ -1922,6 +2154,9 @@ private fun TaskRow(
         onNegativeAllowed = { canMoveTask },
         onPositiveCommit = onComplete,
         onNegativeCommit = { onMoveGesture() },
+        onPositiveCommitHaptic = haptics::vibrateDoubleTick,
+        onNegativeReleaseDurationMs = 280,
+        onNegativeDismissScale = 0.95f,
         onNegativeRejected = { onMoveGesture() },
         onTap = onEdit,
         swipeEnabled = swipeEnabled
@@ -1934,6 +2169,14 @@ private fun TaskRow(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
+                text = task.title,
+                color = palette.textMain,
+                fontSize = 15.sp,
+                fontWeight = FontWeight.Medium,
+                modifier = Modifier.weight(1f)
+            )
+            Spacer(modifier = Modifier.width(14.dp))
+            Text(
                 text = "+${'$'}" + reward,
                 color = palette.green,
                 fontSize = 13.sp,
@@ -1942,14 +2185,6 @@ private fun TaskRow(
                     .clip(RoundedCornerShape(8.dp))
                     .background(palette.greenBg)
                     .padding(horizontal = 10.dp, vertical = 6.dp)
-            )
-            Spacer(modifier = Modifier.width(14.dp))
-            Text(
-                text = task.title,
-                color = palette.textMain,
-                fontSize = 15.sp,
-                fontWeight = FontWeight.Medium,
-                modifier = Modifier.weight(1f)
             )
         }
     }
@@ -1997,17 +2232,6 @@ private fun StoreRow(
                 .padding(horizontal = 16.dp, vertical = 14.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(
-                text = "-${'$'}" + item.cost,
-                color = palette.orange,
-                fontSize = 13.sp,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(palette.orangeBg)
-                    .padding(horizontal = 10.dp, vertical = 6.dp)
-            )
-            Spacer(modifier = Modifier.width(14.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = item.title,
@@ -2021,6 +2245,17 @@ private fun StoreRow(
                     fontSize = 11.sp
                 )
             }
+            Spacer(modifier = Modifier.width(14.dp))
+            Text(
+                text = "-${'$'}" + item.cost,
+                color = palette.orange,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(palette.orangeBg)
+                    .padding(horizontal = 10.dp, vertical = 6.dp)
+            )
         }
     }
 }
@@ -2041,7 +2276,10 @@ private data class SwipeResolvedAction(
     val visual: SwipeVisualAction,
     val allowed: () -> Boolean,
     val commit: () -> Unit,
-    val onRejected: (() -> Unit)? = null
+    val onRejected: (() -> Unit)? = null,
+    val onCommitHaptic: (() -> Unit)? = null,
+    val releaseDurationMs: Int = 220,
+    val dismissScale: Float = 1f
 )
 
 @Composable
@@ -2055,6 +2293,12 @@ private fun SwipeActionCard(
     onNegativeAllowed: () -> Boolean,
     onPositiveCommit: () -> Unit,
     onNegativeCommit: () -> Unit,
+    onPositiveCommitHaptic: (() -> Unit)? = null,
+    onNegativeCommitHaptic: (() -> Unit)? = null,
+    onPositiveReleaseDurationMs: Int = 220,
+    onNegativeReleaseDurationMs: Int = 220,
+    onPositiveDismissScale: Float = 1f,
+    onNegativeDismissScale: Float = 1f,
     onTap: () -> Unit,
     swipeEnabled: Boolean = true,
     onPositiveRejected: (() -> Unit)? = null,
@@ -2065,13 +2309,14 @@ private fun SwipeActionCard(
 ) {
     val haptics = rememberKudoHaptics()
     val scope = rememberCoroutineScope()
-    var rawOffsetX by remember { mutableStateOf(0f) }
-    var widthPx by remember { mutableStateOf(1f) }
+    var rawOffsetX by remember { mutableFloatStateOf(0f) }
+    var widthPx by remember { mutableFloatStateOf(1f) }
     var isDragging by remember { mutableStateOf(false) }
-    var releaseDurationMs by remember { mutableStateOf(180) }
-    var errorShakeTargetX by remember { mutableStateOf(0f) }
+    var releaseDurationMs by remember { mutableIntStateOf(180) }
+    var errorShakeTargetX by remember { mutableFloatStateOf(0f) }
     var errorFlashVisible by remember { mutableStateOf(false) }
-    var dismissAlphaTarget by remember { mutableStateOf(1f) }
+    var dismissAlphaTarget by remember { mutableFloatStateOf(1f) }
+    var dismissScaleTarget by remember { mutableFloatStateOf(1f) }
     val animatedOffsetX by animateFloatAsState(
         targetValue = rawOffsetX,
         animationSpec = tween(durationMillis = if (isDragging) 0 else releaseDurationMs),
@@ -2106,6 +2351,11 @@ private fun SwipeActionCard(
         targetValue = dismissAlphaTarget,
         animationSpec = tween(durationMillis = if (isDragging) 0 else releaseDurationMs),
         label = "swipeDismissAlpha"
+    )
+    val dismissScale by animateFloatAsState(
+        targetValue = dismissScaleTarget,
+        animationSpec = tween(durationMillis = if (isDragging) 0 else releaseDurationMs),
+        label = "swipeDismissScale"
     )
     val animatedCardColor = if (failureFlashColor != null) {
         lerp(
@@ -2154,8 +2404,8 @@ private fun SwipeActionCard(
                 .fillMaxWidth()
                 .offset { IntOffset(displayOffsetX.roundToInt(), 0) }
                 .graphicsLayer {
-                    scaleX = liftScale
-                    scaleY = liftScale
+                    scaleX = liftScale * dismissScale
+                    scaleY = liftScale * dismissScale
                     this.alpha = liftAlpha * dismissAlpha
                 }
                 .then(
@@ -2176,13 +2426,19 @@ private fun SwipeActionCard(
                                             visual = positiveAction,
                                             allowed = onPositiveAllowed,
                                             commit = onPositiveCommit,
-                                            onRejected = onPositiveRejected
+                                            onRejected = onPositiveRejected,
+                                            onCommitHaptic = onPositiveCommitHaptic,
+                                            releaseDurationMs = onPositiveReleaseDurationMs,
+                                            dismissScale = onPositiveDismissScale
                                         )
                                         rawOffsetX < -threshold -> SwipeResolvedAction(
                                             visual = negativeAction,
                                             allowed = onNegativeAllowed,
                                             commit = onNegativeCommit,
-                                            onRejected = onNegativeRejected
+                                            onRejected = onNegativeRejected,
+                                            onCommitHaptic = onNegativeCommitHaptic,
+                                            releaseDurationMs = onNegativeReleaseDurationMs,
+                                            dismissScale = onNegativeDismissScale
                                         )
                                         else -> null
                                     }
@@ -2190,26 +2446,30 @@ private fun SwipeActionCard(
                                     if (action == null) {
                                         releaseDurationMs = 240
                                         dismissAlphaTarget = 1f
+                                        dismissScaleTarget = 1f
                                         rawOffsetX = 0f
                                         return@launch
                                     }
 
                                     if (action.allowed()) {
-                                        releaseDurationMs = 220
+                                        releaseDurationMs = action.releaseDurationMs
                                         dismissAlphaTarget = 0f
-                                        haptics.vibrate(25)
+                                        dismissScaleTarget = action.dismissScale
+                                        action.onCommitHaptic?.invoke() ?: haptics.vibrate(25)
                                         rawOffsetX = if (action.visual.alignStart) {
                                             widthPx * 1.18f
                                         } else {
                                             -widthPx * 1.18f
                                         }
-                                        delay(220)
+                                        delay(action.releaseDurationMs.toLong())
                                         action.commit()
                                         dismissAlphaTarget = 1f
+                                        dismissScaleTarget = 1f
                                     } else {
                                         action.onRejected?.invoke()
                                         releaseDurationMs = 240
                                         haptics.vibrate(35)
+                                        dismissScaleTarget = 1f
                                         rawOffsetX = 0f
                                         if (failureFlashColor != null) {
                                             errorFlashVisible = true
@@ -2280,12 +2540,37 @@ private fun TrendChart(
 
                 fun linePath(points: List<Float>): Path {
                     val stepX = if (points.size <= 1) size.width else size.width / (points.size - 1)
+                    val offsets = points.mapIndexed { index, value ->
+                        Offset(
+                            x = stepX * index,
+                            y = size.height - (value / max) * size.height
+                        )
+                    }
                     return Path().apply {
-                        points.forEachIndexed { index, value ->
-                            val x = stepX * index
-                            val y = size.height - (value / max) * size.height
-                            if (index == 0) moveTo(x, y) else lineTo(x, y)
+                        if (offsets.isEmpty()) return@apply
+                        if (offsets.size == 1) {
+                            moveTo(offsets.first().x, offsets.first().y)
+                            return@apply
                         }
+
+                        moveTo(offsets.first().x, offsets.first().y)
+                        for (index in 1 until offsets.lastIndex) {
+                            val current = offsets[index]
+                            val next = offsets[index + 1]
+                            val midPoint = Offset(
+                                x = (current.x + next.x) / 2f,
+                                y = (current.y + next.y) / 2f
+                            )
+                            quadraticBezierTo(current.x, current.y, midPoint.x, midPoint.y)
+                        }
+                        val lastControl = offsets[offsets.lastIndex - 1]
+                        val lastPoint = offsets.last()
+                        quadraticBezierTo(
+                            lastControl.x,
+                            lastControl.y,
+                            lastPoint.x,
+                            lastPoint.y
+                        )
                     }
                 }
 
@@ -2316,6 +2601,8 @@ private fun LogRow(
     palette: KudoPalette,
     onUndo: () -> Unit
 ) {
+    val haptics = rememberKudoHaptics()
+    val valueColor = if (log.type == "store") palette.orange else palette.green
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -2345,11 +2632,16 @@ private fun LogRow(
         ) {
             Text(
                 text = if (log.value > 0) "+${log.value}" else log.value.toString(),
-                color = if (log.value > 0) palette.green else palette.orange,
+                color = valueColor,
                 fontSize = 14.sp,
                 fontWeight = FontWeight.Bold
             )
-            IconButton(onClick = onUndo) {
+            IconButton(
+                onClick = {
+                    haptics.vibrate(HapticTickMs)
+                    onUndo()
+                }
+            ) {
                 Icon(
                     imageVector = Icons.Rounded.ArrowBack,
                     contentDescription = "Undo",
@@ -2397,7 +2689,7 @@ private fun BottomTabs(
             BottomTabItem(
                 modifier = Modifier.weight(1f),
                 selected = uiState.currentView == KudoViewModel.VIEW_LOG,
-                label = "Log",
+                label = "Kudo",
                 icon = Icons.Rounded.BarChart,
                 selectedColor = palette.textMain,
                 mutedColor = palette.textSub,
@@ -2435,7 +2727,11 @@ private fun BottomTabItem(
             .clickable(
                 interactionSource = interactionSource,
                 indication = null
-            ) { onClick() }
+            ) {
+                if (!selected) {
+                    onClick()
+                }
+            }
             .padding(vertical = 8.dp, horizontal = 8.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
@@ -2467,12 +2763,21 @@ private fun SettingsSheet(
     onExport: () -> Unit,
     onImport: () -> Unit
 ) {
-    val income = uiState.data.logs.filter { it.value > 0 }.sumOf { it.value }
-    val expense = uiState.data.logs.filter { it.value < 0 }.sumOf { -it.value }
-    val ratio = when {
-        expense == 0 && income > 0 -> "∞"
-        expense == 0 -> "0.00"
-        else -> String.format(Locale.US, "%.2f", income.toFloat() / expense.toFloat())
+    val ratio = remember(uiState.data.logs) {
+        var income = 0
+        var expense = 0
+        uiState.data.logs.forEach { log ->
+            if (log.value > 0) {
+                income += log.value
+            } else if (log.value < 0) {
+                expense += -log.value
+            }
+        }
+        when {
+            expense == 0 && income > 0 -> "∞"
+            expense == 0 -> "0.00"
+            else -> String.format(Locale.US, "%.2f", income.toFloat() / expense.toFloat())
+        }
     }
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
@@ -2689,12 +2994,18 @@ private fun ThemeModeChip(
     palette: KudoPalette,
     onClick: () -> Unit
 ) {
+    val haptics = rememberKudoHaptics()
     Box(
         modifier = modifier
             .clip(RoundedCornerShape(16.dp))
             .background(if (selected) palette.card else palette.background)
             .border(1.dp, palette.line, RoundedCornerShape(16.dp))
-            .clickable { onClick() }
+            .clickable {
+                if (!selected) {
+                    haptics.vibrate(HapticTickMs)
+                    onClick()
+                }
+            }
             .height(44.dp),
         contentAlignment = Alignment.Center
     ) {
@@ -2715,6 +3026,7 @@ private fun ActionRow(
     enabled: Boolean,
     onClick: () -> Unit
 ) {
+    val haptics = rememberKudoHaptics()
     val contentColor = if (enabled) palette.textMain else palette.textSub
     Row(
         modifier = Modifier
@@ -2723,7 +3035,10 @@ private fun ActionRow(
             .clip(RoundedCornerShape(12.dp))
             .background(palette.background)
             .border(1.dp, palette.line, RoundedCornerShape(12.dp))
-            .clickable(enabled = enabled) { onClick() }
+            .clickable(enabled = enabled) {
+                haptics.vibrate(HapticTickMs)
+                onClick()
+            }
             .padding(16.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -2920,44 +3235,55 @@ private fun formatMultiplier(multiplier: Float): String {
     return String.format(Locale.US, "%.2f", multiplier)
 }
 
+private fun lerpFloat(start: Float, stop: Float, progress: Float): Float {
+    return start + (stop - start) * progress.coerceIn(0f, 1f)
+}
+
 private fun formatTime(timestamp: Long): String {
-    return SimpleDateFormat("H:mm", Locale.getDefault()).format(Date(timestamp))
+    return Instant.ofEpochMilli(timestamp)
+        .atZone(AppZoneId)
+        .format(TimeFormatter)
 }
 
 private fun formatDayHeader(timestamp: Long): String {
-    return SimpleDateFormat("MMM dd", Locale.getDefault()).format(Date(timestamp))
+    return Instant.ofEpochMilli(timestamp)
+        .atZone(AppZoneId)
+        .format(DayHeaderFormatter)
 }
 
 private fun isToday(timestamp: Long): Boolean {
     if (timestamp == 0L) return false
-    val now = Calendar.getInstance()
-    val other = Calendar.getInstance().apply { timeInMillis = timestamp }
-    return now.get(Calendar.YEAR) == other.get(Calendar.YEAR) &&
-        now.get(Calendar.DAY_OF_YEAR) == other.get(Calendar.DAY_OF_YEAR)
+    return Instant.ofEpochMilli(timestamp)
+        .atZone(AppZoneId)
+        .toLocalDate() == LocalDate.now(AppZoneId)
 }
 
 private fun buildTrend(logs: List<KudoLogEntry>, positive: Boolean): List<Float> {
-    val days = mutableListOf<Float>()
+    val today = LocalDate.now(AppZoneId)
+    val windowStart = today.minusDays(13)
+    val buckets = FloatArray(14)
 
-    repeat(14) { index ->
-        val day = Calendar.getInstance().apply {
-            add(Calendar.DAY_OF_YEAR, index - 13)
-            set(Calendar.HOUR_OF_DAY, 0)
-            set(Calendar.MINUTE, 0)
-            set(Calendar.SECOND, 0)
-            set(Calendar.MILLISECOND, 0)
+    logs.forEach { log ->
+        val amount = when {
+            positive && log.value > 0 -> log.value.toFloat()
+            !positive && log.value < 0 -> (-log.value).toFloat()
+            else -> return@forEach
         }
-        val start = day.timeInMillis
-        day.add(Calendar.DAY_OF_YEAR, 1)
-        val end = day.timeInMillis
-        val sum = logs.filter { log ->
-            log.timestamp in start until end &&
-                if (positive) log.value > 0 else log.value < 0
-        }.sumOf { log ->
-            if (positive) log.value else -log.value
+        val logDate = Instant.ofEpochMilli(log.timestamp)
+            .atZone(AppZoneId)
+            .toLocalDate()
+        if (logDate.isBefore(windowStart) || logDate.isAfter(today)) {
+            return@forEach
         }
-        days += sum.toFloat()
+
+        val index = (logDate.toEpochDay() - windowStart.toEpochDay()).toInt()
+        buckets[index] += amount
     }
 
-    return days
+    return buckets.toList()
 }
+
+private val AppZoneId: ZoneId = ZoneId.systemDefault()
+private val TimeFormatter: DateTimeFormatter = DateTimeFormatter.ofPattern("H:mm", Locale.getDefault())
+private val DayHeaderFormatter: DateTimeFormatter =
+    DateTimeFormatter.ofPattern("MMM dd", Locale.getDefault())
