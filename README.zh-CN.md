@@ -2,18 +2,68 @@
 
 [English](./README.md) | [简体中文](./README.zh-CN.md)
 
-原版 Kudo PWA 的原生 Android 实现。
+一个极简、带有游戏化反馈的 Todo App。
 
-## 简介
+## 为什么用 Kudo
 
-Kudo 是一个游戏化任务应用，包含：
+很多待办应用擅长“收集任务”。  
+Kudo 更在意“推动你完成”。
 
-- Habits
-- Focus / Inbox 任务
-- 奖励商店
-- 操作日志
-- 本地备份与恢复
-- 跟随系统 / 浅色 / 深色主题
+它把任务、习惯、奖励放进同一套简单系统里：
+
+你完成事情。  
+你获得金币。  
+你兑换奖励。
+
+闭环清晰，反馈直接。
+
+## 你可以做什么
+
+- 管理重复进行的 Habits
+- 使用极简任务流，所有新任务先进入 Inbox
+- 通过流转任务，把当下最重要的事提到 Focus
+- 完成任务后获得金币，奖励随等级成长
+- 在奖励商店中消费金币，兑换喜欢的奖励
+- 在日志中回看自己的行动轨迹
+- 数据完全保留在本地，并支持备份与恢复
+
+## Kudo 的特点
+
+### 默认就是极简
+
+Kudo 尽量保持安静。  
+没有厚重的仪表盘，没有喧闹的装饰，也没有为了“上瘾”而堆出来的刺激。
+
+### 克制的游戏化
+
+金币和奖励不是噱头。  
+它们只是让“努力”变得更可见、更有触感的一层反馈。
+
+### 任务有结构
+
+不是所有事情都该堆在一个列表里。
+
+- **Habits**：重复进行
+- **Focus**：当下最重要的事
+- **Inbox**：快速记录、临时收纳
+
+### 本地优先
+
+你的数据主要保留在设备本地。  
+导入导出通过系统文件管理器完成。
+
+## 哲学
+
+Kudo 想表达的是一件很简单的事：
+
+> 效率不该是紧张和堆积，而应该是平静、明确、可感知的推进。
+
+你从顶部下划添加。  
+项目落入自己的位置。  
+你完成动作，系统给出回应。
+
+它不是为了逼你更焦虑。  
+而是为了让进步更真实。
 
 ## 安装
 
@@ -21,45 +71,7 @@ Kudo 是一个游戏化任务应用，包含：
 
 1. 打开 GitHub Releases 页面
 2. 下载最新的 `Kudo-<版本号>.apk`
-3. 如果 Android 提示，允许浏览器或文件管理器安装未知应用
+3. 如果 Android 提示，请允许浏览器或文件管理器安装未知应用
 4. 打开 APK 并安装
 
 发布页：`https://github.com/JasperYep/Kudo/releases`
-
-## 构建
-
-```bash
-./gradlew :app:assembleDebug
-./gradlew :app:assembleRelease
-```
-
-- Debug APK：`app/build/outputs/apk/debug/app-debug.apk`
-- Release APK：`app/build/outputs/apk/release/`
-
-## 自动发布
-
-- 推送 tag 会触发 GitHub Actions
-- Actions 会构建签名 `release` APK
-- APK 会自动上传到 GitHub Releases
-
-签名配置说明：`docs/RELEASE_SIGNING.md`
-
-## 技术
-
-- Kotlin
-- Jetpack Compose
-- DataStore
-- MPAndroidChart
-- GitHub Actions
-
-## 结构
-
-```text
-app/src/main/java/com/kudo/app/
-├── core/
-├── ui/screens/
-├── ui/theme/
-├── ui/viewmodel/
-├── KudoApplication.kt
-└── MainActivity.kt
-```
