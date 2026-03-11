@@ -8,7 +8,6 @@ pluginManagement {
             }
         }
         mavenCentral()
-        maven { url = uri("https://mirrors.tencent.com/nexus/repository/gradle-plugins/") }
         gradlePluginPortal()
     }
 }
@@ -18,9 +17,7 @@ dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
-        maven { url = uri("https://mirrors.tencent.com/nexus/repository/maven-public/") }
-        maven { url = uri("https://maven.aliyun.com/repository/public/") }
-        maven { url = uri("https://maven.aliyun.com/repository/google/") }
+        maven { url = uri("https://jitpack.io") }
     }
 }
 
