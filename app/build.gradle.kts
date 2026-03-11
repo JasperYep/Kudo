@@ -3,6 +3,16 @@ plugins {
     id("org.jetbrains.kotlin.android")
 }
 
+val releaseStoreFile = providers.environmentVariable("KUDO_RELEASE_STORE_FILE").orNull
+val releaseStorePassword = providers.environmentVariable("KUDO_RELEASE_STORE_PASSWORD").orNull
+val releaseKeyAlias = providers.environmentVariable("KUDO_RELEASE_KEY_ALIAS").orNull
+val releaseKeyPassword = providers.environmentVariable("KUDO_RELEASE_KEY_PASSWORD").orNull
+val hasReleaseSigning =
+    !releaseStoreFile.isNullOrBlank() &&
+        !releaseStorePassword.isNullOrBlank() &&
+        !releaseKeyAlias.isNullOrBlank() &&
+        !releaseKeyPassword.isNullOrBlank()
+
 android {
     namespace = "com.kudo.app"
     compileSdk = 34
@@ -20,10 +30,24 @@ android {
         }
     }
 
+    signingConfigs {
+        if (hasReleaseSigning) {
+            create("release") {
+                storeFile = file(releaseStoreFile!!)
+                storePassword = releaseStorePassword
+                keyAlias = releaseKeyAlias
+                keyPassword = releaseKeyPassword
+            }
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = true
             isShrinkResources = true
+            if (hasReleaseSigning) {
+                signingConfig = signingConfigs.getByName("release")
+            }
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"

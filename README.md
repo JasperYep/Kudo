@@ -15,6 +15,28 @@ Kudo 是一个游戏化的任务管理应用，结合了：
 
 ---
 
+## 📦 安装 APK
+
+普通用户不需要 Android Studio，也不需要 Google Play。
+
+1. 打开 GitHub 的 **Releases** 页面
+2. 下载最新版本的 `Kudo-<版本号>.apk`
+3. 在 Android 设备上允许浏览器或文件管理器安装未知来源应用
+4. 打开下载好的 APK 并安装
+
+---
+
+## 🚀 发布自动化
+
+- 仓库保持公开并使用开源许可证
+- 每次推送新 tag，GitHub Actions 都会自动构建 **signed release APK**
+- 构建产物会自动附加到 GitHub Releases
+- 签名 keystore 通过 GitHub Actions secrets 保存，不进入仓库
+
+签名与发布配置说明见：`docs/RELEASE_SIGNING.md`
+
+---
+
 ## 🚀 快速开始
 
 ### 前提条件

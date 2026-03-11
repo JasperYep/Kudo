@@ -7,6 +7,10 @@ local.properties
 .kotlin/
 captures/
 *.log
+*.jks
+*.keystore
+keystore.properties
+signing.properties
 original/
 build/
 app/build/
