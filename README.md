@@ -1,229 +1,81 @@
-# Kudo Android - Gameified Todo App
+# Kudo
 
-**原生 Android 版本 - 基于 Jetpack Compose**
+Native Android build of the original Kudo PWA.  
+原版 Kudo PWA 的原生 Android 实现。
 
----
+## Overview / 简介
 
-## 📱 应用简介
+- Gameified todo app with habits, Focus/Inbox tasks, rewards store, and logs.  
+  带有 Habits、Focus/Inbox、奖励商店和日志的游戏化任务应用。
+- Built for direct APK distribution outside Google Play.  
+  面向 Google Play 之外的直接 APK 分发。
+- Public repository with automated signed release APK builds via GitHub Actions.  
+  公开仓库，使用 GitHub Actions 自动构建签名 release APK。
 
-Kudo 是一个游戏化的任务管理应用，结合了：
-- ✅ Todo 任务管理
-- 🎯 习惯养成
-- 💰 金币经济系统
-- 🎁 奖励商店
-- 📈 成长统计
+## Features / 功能
 
----
+- Habits, Focus, Inbox, Store, Log  
+  Habits、Focus、Inbox、Store、Log
+- Drag reorder, swipe actions, haptics  
+  拖拽排序、滑动手势、振动反馈
+- Local backup and restore through the system file manager  
+  通过系统文件管理器进行本地备份与恢复
+- System / Light / Dark theme  
+  跟随系统 / 浅色 / 深色主题
 
-## 📦 安装 APK
+## Install / 安装
 
-普通用户不需要 Android Studio，也不需要 Google Play。
+- Download the latest APK from the GitHub Releases page and install it on your Android device.  
+  从 GitHub Releases 页面下载最新 APK，并直接安装到 Android 设备。
+- Releases page: `https://github.com/JasperYep/Kudo/releases`  
+  发布页：`https://github.com/JasperYep/Kudo/releases`
+- If Android blocks installation, allow installs from your browser or file manager and try again.  
+  如果 Android 阻止安装，请允许浏览器或文件管理器安装未知应用后重试。
 
-1. 打开 GitHub 的 **Releases** 页面
-2. 下载最新版本的 `Kudo-<版本号>.apk`
-3. 在 Android 设备上允许浏览器或文件管理器安装未知来源应用
-4. 打开下载好的 APK 并安装
+## Build / 构建
 
----
-
-## 🚀 发布自动化
-
-- 仓库保持公开并使用开源许可证
-- 每次推送新 tag，GitHub Actions 都会自动构建 **signed release APK**
-- 构建产物会自动附加到 GitHub Releases
-- 签名 keystore 通过 GitHub Actions secrets 保存，不进入仓库
-
-签名与发布配置说明见：`docs/RELEASE_SIGNING.md`
-
----
-
-## 🚀 快速开始
-
-### 前提条件
-
-1. **Android Studio** (推荐：最新版)
-   - 下载地址：https://developer.android.com/studio
-
-2. **JDK 17** (Android Studio 内置)
-
-3. **Android SDK**
-   - API 26 (Android 8.0) 或更高
-
----
-
-### 安装步骤
-
-#### 1. 打开项目
-
-```
-File → Open → 选择 kudo-android 文件夹
+```bash
+./gradlew :app:assembleDebug
+./gradlew :app:assembleRelease
 ```
 
-#### 2. 等待 Gradle 同步
+- Debug APK: `app/build/outputs/apk/debug/app-debug.apk`  
+  Debug APK：`app/build/outputs/apk/debug/app-debug.apk`
+- Release APK: `app/build/outputs/apk/release/`  
+  Release APK：`app/build/outputs/apk/release/`
 
-首次打开需要下载依赖，约 2-5 分钟。
+## Release Automation / 自动发布
 
-#### 3. 构建 APK
+- Push a tag such as `v1.0.2` to trigger the workflow.  
+  推送类似 `v1.0.2` 的 tag 即可触发自动发布。
+- GitHub Actions builds a signed **release** APK and uploads it to GitHub Releases.  
+  GitHub Actions 会构建签名 **release** APK，并上传到 GitHub Releases。
+- Signing setup: `docs/RELEASE_SIGNING.md`  
+  签名配置说明：`docs/RELEASE_SIGNING.md`
 
-```
-Build → Build Bundle(s) / APK(s) → Build APK(s)
-```
+## Tech / 技术
 
-#### 4. 获取 APK 文件
+- Kotlin
+- Jetpack Compose
+- DataStore
+- MPAndroidChart
+- GitHub Actions
 
-```
-app/build/outputs/apk/debug/app-debug.apk
-```
+## Project Structure / 项目结构
 
----
-
-### 安装到手机
-
-#### 方法 1：USB 调试
-```
-1. 手机开启开发者选项
-2. 开启 USB 调试
-3. 点击 Android Studio 的 Run 按钮
-```
-
-#### 方法 2：直接安装 APK
-```
-1. 将 APK 发送到手机
-2. 允许"未知来源"安装
-3. 点击安装
-```
-
----
-
-## 📁 项目结构
-
-```
+```text
 app/src/main/java/com/kudo/app/
-├── data/                    # 数据层
-│   ├── entity/             # Room 实体
-│   ├── dao/                # 数据访问对象
-│   ├── repository/         # 数据仓库
-│   └── KudoDatabase.kt     # 数据库
-├── domain/                  # 领域层
-│   ├── model/              # 数据模型
-│   └── GameMechanics.kt    # 游戏机制
-├── ui/                      # UI 层
-│   ├── theme/              # 主题系统
-│   └── screens/            # 页面
-└── MainActivity.kt          # 主 Activity
+├── core/
+├── ui/screens/
+├── ui/theme/
+├── ui/viewmodel/
+├── KudoApplication.kt
+└── MainActivity.kt
 ```
 
----
+## Status / 状态
 
-## 🎨 设计特点
-
-### UI 还原
-- 100% 还原 PWA 版本设计
-- Material 3 Design
-- 深色/浅色主题支持
-
-### 性能优化
-- Jetpack Compose (声明式 UI)
-- Room Database (本地存储)
-- Kotlin Coroutines (异步操作)
-- 120fps 动画支持
-
-### 原生能力
-- 精准 Haptic 反馈
-- 硬件加速动画
-- 原生手势处理
-- 后台数据同步
-
----
-
-## 🎮 核心功能
-
-### 任务系统
-- **Focus 列表**：重要任务
-- **Inbox 列表**：临时任务
-- 滑动切换列表
-- 拖拽排序
-
-### 习惯养成
-- 长按 1.5 秒充能
-- 渐进式振动反馈
-- 完成次数统计
-
-### 游戏化机制
-- 完成任务 → 获得金币
-- 金币 → 商店兑换奖励
-- 经验值 → 提升等级
-- 动态倍数加成
-
-### 数据统计
-- 收支趋势图
-- 收支比率
-- 历史最高金币
-
----
-
-## 🔧 技术栈
-
-| 组件 | 技术 |
-|------|------|
-| UI | Jetpack Compose |
-| 架构 | MVVM |
-| 数据库 | Room |
-| 异步 | Kotlin Coroutines |
-| 导航 | Navigation Compose |
-| 主题 | Material 3 |
-| 图表 | MPAndroidChart |
-
----
-
-## 📊 性能指标
-
-| 指标 | 目标 |
-|------|------|
-| 冷启动 | < 0.5s |
-| 列表滚动 | 120fps |
-| 动画帧率 | 120fps |
-| Haptic 延迟 | < 10ms |
-| 安装包 | < 30MB |
-| 内存占用 | < 100MB |
-
----
-
-## 🐛 已知问题
-
-- [ ] 启动屏待添加
-- [ ] 数据备份功能待完善
-- [ ] 通知系统待实现
-
----
-
-## 📝 待开发功能
-
-- [ ] 成就系统
-- [ ] 桌面小组件
-- [ ] 生物识别
-- [ ] 云同步
-- [ ] 更多主题
-
----
-
-## 🤝 贡献指南
-
-这是个人项目，但欢迎反馈和建议！
-
----
-
-## 📄 许可证
-
-MIT License
-
----
-
-## 📞 联系方式
-
-有任何问题或建议，欢迎联系！
-
----
-
-**版本**: 1.0.0  
-**最后更新**: 2026-03-04
+- Active Android project.  
+  持续开发中的 Android 项目。
+- If you want this repository to be formally open source, add a `LICENSE` file.  
+  如果你希望这个仓库在法律意义上成为正式开源项目，请补一个 `LICENSE` 文件。
