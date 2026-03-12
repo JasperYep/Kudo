@@ -2,6 +2,7 @@
 
 package com.kudo.app.ui.screens
 
+import android.app.DatePickerDialog
 import android.net.Uri
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -297,14 +298,15 @@ fun HomeScreen(
                             }
                         },
                         onRevealProgressChanged = { activeComposerRevealProgress = it }
-                    ) {
-                        modifier ->
+                    ) { modifier, pageScrollEnabled ->
                         TasksPage(
                             uiState = uiState,
                             palette = palette,
                             modifier = modifier,
+                            userScrollEnabled = pageScrollEnabled,
                             onToggleHabits = viewModel::toggleHabitsCollapsed,
                             onSetListMode = viewModel::setListMode,
+                            onResetTaskSortMode = viewModel::resetTaskSortMode,
                             onExitHabitJiggle = viewModel::exitHabitJiggleMode,
                             onEnterHabitJiggle = viewModel::enterHabitJiggleMode,
                             onDeleteHabit = viewModel::deleteTaskItem,
@@ -337,12 +339,12 @@ fun HomeScreen(
                             }
                         },
                         onRevealProgressChanged = { activeComposerRevealProgress = it }
-                    ) {
-                        modifier ->
+                    ) { modifier, pageScrollEnabled ->
                         StorePage(
                             uiState = uiState,
                             palette = palette,
                             modifier = modifier,
+                            userScrollEnabled = pageScrollEnabled,
                             onReorderStore = viewModel::reorderStore,
                             onBuyGesture = viewModel::purchaseItemFromGesture,
                             onEdit = viewModel::openEditStore,
@@ -574,12 +576,13 @@ private fun PullComposerPage(
     onModeToggle: () -> Unit,
     onAdd: () -> Boolean,
     onRevealProgressChanged: (Float) -> Unit,
-    content: @Composable (Modifier) -> Unit
+    content: @Composable (Modifier, Boolean) -> Unit
 ) {
-    var composerRevealTargetPx by remember { mutableFloatStateOf(0f) }
     var composerMeasuredHeightPx by remember { mutableFloatStateOf(1f) }
     var composerOpenHapticArmed by remember { mutableStateOf(true) }
     var composerOpenHapticPending by remember { mutableStateOf(false) }
+    var composerAnimationTargetPx by remember { mutableFloatStateOf(0f) }
+    var composerAnimationJob by remember { mutableStateOf<Job?>(null) }
 
     val isListAtTop by remember(listState) {
         derivedStateOf {
@@ -592,37 +595,25 @@ private fun PullComposerPage(
     }
     val haptics = rememberKudoHaptics()
     val density = LocalDensity.current
+    val scope = rememberCoroutineScope()
     val estimatedComposerHeightPx = with(density) { 120.dp.toPx() }
     val blankTapSlopPx = with(density) { 8.dp.toPx() }
     val openTriggerDistancePx = with(density) { 72.dp.toPx() }
-    val closeTriggerDistancePx = with(density) { 52.dp.toPx() }
+    val closeTriggerDistancePx = with(density) { 18.dp.toPx() }
+    val reverseInterruptDistancePx = with(density) { 8.dp.toPx() }
     val composerMaxHeightPx = composerMeasuredHeightPx.takeIf { it > 1f } ?: estimatedComposerHeightPx
     val composerClosedRearmProgress = 0.12f
     val composerVisuallyExpandedProgress = 0.995f
     val composerVisuallyExpandedPx = composerMaxHeightPx * composerVisuallyExpandedProgress
-    val resolvedComposerTargetPx = composerRevealTargetPx.coerceIn(0f, composerMaxHeightPx)
-    val composerRevealPx by animateFloatAsState(
-        targetValue = resolvedComposerTargetPx,
-        animationSpec = if (resolvedComposerTargetPx > 0f) {
-            spring(
-                stiffness = 420f,
-                dampingRatio = 0.84f,
-                visibilityThreshold = 0.25f
-            )
-        } else {
-            spring(
-                stiffness = 880f,
-                dampingRatio = 0.92f,
-                visibilityThreshold = 0.25f
-            )
-        },
-        label = "composerReveal"
-    )
+    val composerRevealPx = remember { Animatable(0f) }
     val composerRevealProgress = if (composerMeasuredHeightPx > 0f) {
-        (composerRevealPx / composerMeasuredHeightPx).coerceIn(0f, 1f)
+        (composerRevealPx.value / composerMeasuredHeightPx).coerceIn(0f, 1f)
     } else {
         0f
     }
+    val pageScrollEnabled =
+        composerAnimationTargetPx <= 1f &&
+            composerRevealProgress <= composerClosedRearmProgress
 
     fun triggerComposerOpenHaptic() {
         composerOpenHapticPending = false
@@ -643,20 +634,48 @@ private fun PullComposerPage(
         }
     }
 
-    fun openComposer() {
-        if (composerRevealTargetPx >= composerMaxHeightPx - 0.5f) {
+    fun animateComposerTo(targetPx: Float) {
+        val resolvedTarget = targetPx.coerceIn(0f, composerMaxHeightPx)
+        composerAnimationTargetPx = resolvedTarget
+        composerAnimationJob?.cancel()
+        composerAnimationJob = scope.launch {
+            composerRevealPx.stop()
+            composerRevealPx.animateTo(
+                targetValue = resolvedTarget,
+                animationSpec = if (resolvedTarget > composerRevealPx.value) {
+                    spring(
+                        stiffness = 420f,
+                        dampingRatio = 0.84f,
+                        visibilityThreshold = 0.25f
+                    )
+                } else {
+                    spring(
+                        stiffness = 880f,
+                        dampingRatio = 0.92f,
+                        visibilityThreshold = 0.25f
+                    )
+                }
+            )
+        }
+    }
+
+    fun openComposer(currentReveal: Float = composerRevealPx.value) {
+        if (
+            composerAnimationTargetPx >= composerMaxHeightPx - 0.5f &&
+            composerRevealPx.value >= composerMaxHeightPx - 0.5f
+        ) {
             return
         }
-        composerRevealTargetPx = composerMaxHeightPx
+        animateComposerTo(composerMaxHeightPx)
         armComposerOpenHapticIfNeeded(
-            currentReveal = composerRevealPx,
+            currentReveal = currentReveal,
             shouldExpand = true
         )
     }
 
     fun collapseComposer() {
         composerOpenHapticPending = false
-        composerRevealTargetPx = 0f
+        animateComposerTo(0f)
     }
 
     LaunchedEffect(composerRevealProgress) {
@@ -667,7 +686,7 @@ private fun PullComposerPage(
     }
     LaunchedEffect(
         composerRevealProgress,
-        resolvedComposerTargetPx,
+        composerAnimationTargetPx,
         composerMaxHeightPx,
         composerOpenHapticPending
     ) {
@@ -679,29 +698,41 @@ private fun PullComposerPage(
 
         val shouldTriggerOpenHaptic =
             composerOpenHapticPending &&
-                resolvedComposerTargetPx >= composerVisuallyExpandedPx &&
+                composerAnimationTargetPx >= composerVisuallyExpandedPx &&
                 composerRevealProgress >= composerVisuallyExpandedProgress
         if (shouldTriggerOpenHaptic) {
             triggerComposerOpenHaptic()
         }
+    }
+    LaunchedEffect(composerMaxHeightPx) {
+        val clampedCurrent = composerRevealPx.value.coerceIn(0f, composerMaxHeightPx)
+        if (clampedCurrent != composerRevealPx.value) {
+            composerRevealPx.snapTo(clampedCurrent)
+        }
+        composerAnimationTargetPx = composerAnimationTargetPx.coerceIn(0f, composerMaxHeightPx)
     }
 
     Box(
         modifier = modifier
             .fillMaxSize()
             .background(palette.background)
-            .pointerInput(isListAtTop, composerRevealProgress) {
+            .pointerInput(isListAtTop, composerRevealProgress, composerAnimationTargetPx) {
                 awaitEachGesture {
                     val down = awaitFirstDown(
                         requireUnconsumed = false,
                         pass = PointerEventPass.Initial
                     )
-                    val canOpenThisGesture = isListAtTop && composerRevealProgress <= 0.02f
-                    val canCloseThisGesture = composerRevealProgress >= 0.98f
+                    val startRevealProgress = composerRevealProgress
+                    val canOpenThisGesture = isListAtTop && startRevealProgress <= 0.02f
+                    val canCloseThisGesture =
+                        composerAnimationTargetPx > 1f ||
+                            startRevealProgress > composerClosedRearmProgress
                     var pointerId = down.id
                     var totalDx = 0f
                     var totalDy = 0f
-                    var gestureHandled = false
+                    var gestureLockedToComposer = false
+                    var openTriggered = false
+                    var openPeakDy = 0f
 
                     while (true) {
                         val event = awaitPointerEvent(pass = PointerEventPass.Initial)
@@ -714,23 +745,44 @@ private fun PullComposerPage(
                         totalDx += delta.x
                         totalDy += delta.y
 
-                        if (!gestureHandled) {
-                            val verticalDistance = kotlin.math.abs(totalDy)
-                            val horizontalDistance = kotlin.math.abs(totalDx)
-                            val isVerticalGesture = verticalDistance > horizontalDistance
+                        val verticalDistance = kotlin.math.abs(totalDy)
+                        val horizontalDistance = kotlin.math.abs(totalDx)
+                        val isVerticalGesture =
+                            verticalDistance > blankTapSlopPx &&
+                                verticalDistance > horizontalDistance
 
-                            if (isVerticalGesture && canOpenThisGesture && totalDy >= openTriggerDistancePx) {
-                                openComposer()
-                                change.consume()
-                                gestureHandled = true
-                            } else if (isVerticalGesture && canCloseThisGesture && totalDy <= -closeTriggerDistancePx) {
+                        if (openTriggered) {
+                            openPeakDy = maxOf(openPeakDy, totalDy)
+                            change.consume()
+                            if (openPeakDy - totalDy >= reverseInterruptDistancePx) {
                                 collapseComposer()
-                                change.consume()
-                                gestureHandled = true
+                                gestureLockedToComposer = true
+                                openTriggered = false
                             }
+                        } else if (isVerticalGesture && canCloseThisGesture && totalDy < 0f) {
+                            gestureLockedToComposer = true
+                            change.consume()
+                            if (kotlin.math.abs(totalDy) >= closeTriggerDistancePx) {
+                                collapseComposer()
+                            }
+                        } else if (
+                            isVerticalGesture &&
+                            canOpenThisGesture &&
+                            totalDy >= openTriggerDistancePx
+                        ) {
+                            openComposer()
+                            openTriggered = true
+                            openPeakDy = totalDy
+                            gestureLockedToComposer = true
+                            change.consume()
+                        } else if (gestureLockedToComposer) {
+                            change.consume()
                         }
 
                         if (change.changedToUpIgnoreConsumed()) {
+                            if (openTriggered) {
+                                openComposer()
+                            }
                             break
                         }
                     }
@@ -774,8 +826,6 @@ private fun PullComposerPage(
                 onMeasuredHeight = { measuredHeight ->
                     if (measuredHeight > 1f) {
                         composerMeasuredHeightPx = measuredHeight
-                        composerRevealTargetPx = composerRevealTargetPx
-                            .coerceIn(0f, measuredHeight)
                     }
                 }
             ) {
@@ -803,7 +853,7 @@ private fun PullComposerPage(
                     .fillMaxWidth()
                     .weight(1f)
             ) {
-                content(Modifier.fillMaxSize())
+                content(Modifier.fillMaxSize(), pageScrollEnabled)
             }
         }
     }
@@ -1117,8 +1167,10 @@ private fun TasksPage(
     uiState: KudoUiState,
     palette: KudoPalette,
     modifier: Modifier = Modifier,
+    userScrollEnabled: Boolean = true,
     onToggleHabits: () -> Unit,
     onSetListMode: (String) -> Unit,
+    onResetTaskSortMode: (String) -> Unit,
     onExitHabitJiggle: () -> Unit,
     onEnterHabitJiggle: () -> Unit,
     onDeleteHabit: (Long) -> Unit,
@@ -1138,10 +1190,14 @@ private fun TasksPage(
     LaunchedEffect(habits) {
         localHabits = habits
     }
-    val tasks = remember(uiState.data.tasks, uiState.data.listMode) {
-        uiState.data.tasks.filter {
-            it.type == KudoState.TYPE_TASK && it.list == uiState.data.listMode
-        }
+    val currentSortMode = uiState.data.taskSortModeFor(uiState.data.listMode)
+    val tasks = remember(uiState.data.tasks, uiState.data.listMode, currentSortMode) {
+        sortTasksForDisplay(
+            tasks = uiState.data.tasks.filter {
+                it.type == KudoState.TYPE_TASK && it.list == uiState.data.listMode
+            },
+            sortMode = currentSortMode
+        )
     }
 
     var localTasks by remember(uiState.data.listMode) { mutableStateOf(tasks) }
@@ -1185,6 +1241,7 @@ private fun TasksPage(
 
         LazyColumn(
             state = state.listState,
+            userScrollEnabled = userScrollEnabled,
             modifier = modifier
                 .reorderable(state)
         ) {
@@ -1231,6 +1288,10 @@ private fun TasksPage(
                 onSetListMode = {
                     onExitHabitJiggle()
                     onSetListMode(it)
+                },
+                onResetSortMode = {
+                    onExitHabitJiggle()
+                    onResetTaskSortMode(it)
                 }
             )
         }
@@ -1353,6 +1414,7 @@ private fun StorePage(
     uiState: KudoUiState,
     palette: KudoPalette,
     modifier: Modifier = Modifier,
+    userScrollEnabled: Boolean = true,
     onReorderStore: (List<Long>) -> Unit,
     onBuyGesture: (Long) -> Boolean,
     onEdit: (Long) -> Unit,
@@ -1392,6 +1454,7 @@ private fun StorePage(
 
     LazyColumn(
         state = state.listState,
+        userScrollEnabled = userScrollEnabled,
         modifier = modifier
             .reorderable(state)
     ) {
@@ -1796,7 +1859,8 @@ private fun FocusInboxSwitcher(
     modifier: Modifier = Modifier,
     currentMode: String,
     palette: KudoPalette,
-    onSetListMode: (String) -> Unit
+    onSetListMode: (String) -> Unit,
+    onResetSortMode: (String) -> Unit
 ) {
     val focusSelected = currentMode == KudoState.LIST_FOCUS
     var trackWidthPx by remember { mutableFloatStateOf(1f) }
@@ -1842,11 +1906,19 @@ private fun FocusInboxSwitcher(
                     .weight(1f)
                     .clip(RoundedCornerShape(10.dp))
                     .background(if (focusSelected) palette.card else Color.Transparent)
-                    .clickable {
-                        if (!focusSelected) {
-                            onSetListMode(KudoState.LIST_FOCUS)
+                    .combinedClickable(
+                        onClick = {
+                            if (!focusSelected) {
+                                onSetListMode(KudoState.LIST_FOCUS)
+                            }
+                        },
+                        onDoubleClick = {
+                            if (!focusSelected) {
+                                onSetListMode(KudoState.LIST_FOCUS)
+                            }
+                            onResetSortMode(KudoState.LIST_FOCUS)
                         }
-                    }
+                    )
                     .padding(vertical = 8.dp),
                 contentAlignment = Alignment.Center
             ) {
@@ -1862,11 +1934,19 @@ private fun FocusInboxSwitcher(
                     .weight(1f)
                     .clip(RoundedCornerShape(10.dp))
                     .background(if (!focusSelected) palette.card else Color.Transparent)
-                    .clickable {
-                        if (focusSelected) {
-                            onSetListMode(KudoState.LIST_INBOX)
+                    .combinedClickable(
+                        onClick = {
+                            if (focusSelected) {
+                                onSetListMode(KudoState.LIST_INBOX)
+                            }
+                        },
+                        onDoubleClick = {
+                            if (focusSelected) {
+                                onSetListMode(KudoState.LIST_INBOX)
+                            }
+                            onResetSortMode(KudoState.LIST_INBOX)
                         }
-                    }
+                    )
                     .padding(vertical = 8.dp),
                 contentAlignment = Alignment.Center
             ) {
@@ -2136,6 +2216,9 @@ private fun TaskRow(
     val haptics = rememberKudoHaptics()
     val reward = (task.valAmount * finalMultiplier).toInt()
     val canMoveTask = task.list != KudoState.LIST_INBOX || task.valAmount > 0
+    val dueBadge = remember(task.dueEpochDay, palette) {
+        task.dueEpochDay?.let { dueBadgeFor(it, palette) }
+    }
     SwipeActionCard(
         modifier = modifier,
         palette = palette,
@@ -2168,13 +2251,25 @@ private fun TaskRow(
                 .padding(horizontal = 16.dp, vertical = 14.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(
-                text = task.title,
-                color = palette.textMain,
-                fontSize = 15.sp,
-                fontWeight = FontWeight.Medium,
-                modifier = Modifier.weight(1f)
-            )
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = task.title,
+                    color = palette.textMain,
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.Medium,
+                    maxLines = 1
+                )
+                dueBadge?.let { badge ->
+                    Spacer(modifier = Modifier.height(3.dp))
+                    Text(
+                        text = badge.text,
+                        color = badge.color,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Medium,
+                        maxLines = 1
+                    )
+                }
+            }
             Spacer(modifier = Modifier.width(14.dp))
             Text(
                 text = "+${'$'}" + reward,
@@ -3081,7 +3176,7 @@ private fun HelpContent(
         )
         Text(text = "🖐️ 手势操作", color = palette.textMain, fontWeight = FontWeight.Bold)
         Text(
-            text = "顶部：在页面顶部下划展开添加面板，提交后会自动收起。\nHabits：点击充能，长按进入编辑 / 排序 / 删除模式。\nTasks：右滑完成，左滑流转，点击编辑，长按排序。\nStore：滑动消费金币，点击编辑奖励内容，长按排序。",
+            text = "顶部：在页面顶部下划展开添加面板，提交后会自动收起。\nHabits：点击充能，长按进入编辑 / 排序 / 删除模式。\nTasks：右滑完成，左滑流转，点击编辑可设置截止日，长按排序；双击 Focus / Inbox 可恢复按日期排序。\nStore：滑动消费金币，点击编辑奖励内容，长按排序。",
             color = palette.textSub,
             fontSize = 13.sp
         )
@@ -3094,6 +3189,20 @@ private fun HelpContent(
     }
 }
 
+@Composable
+private fun CompactEditLabel(
+    text: String,
+    palette: KudoPalette
+) {
+    Text(
+        text = text,
+        color = palette.textSub,
+        fontSize = 11.sp,
+        fontWeight = FontWeight.Bold,
+        modifier = Modifier.padding(start = 4.dp, bottom = 6.dp)
+    )
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun EditSheet(
@@ -3101,12 +3210,15 @@ private fun EditSheet(
     palette: KudoPalette,
     target: EditingTarget,
     onDismiss: () -> Unit,
-    onSave: (String, String) -> Unit,
+    onSave: (String, String, Long?) -> Unit,
     onDelete: () -> Unit
 ) {
+    val context = LocalContext.current
     val targetTask = uiState.data.tasks.firstOrNull { it.id == target.id }
     val targetStore = uiState.data.store.firstOrNull { it.id == target.id }
     val isPendingMove = uiState.pendingMoveTaskId != null
+    val isTaskEditor = target.kind == KudoViewModel.KIND_TASK && targetTask != null
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
     var title by remember(target.id, isPendingMove) {
         mutableStateOf(targetTask?.title ?: targetStore?.title.orEmpty())
@@ -3121,10 +3233,14 @@ private fun EditSheet(
             }
         )
     }
+    var dueEpochDay by remember(target.id, isPendingMove, targetTask?.dueEpochDay) {
+        mutableStateOf(targetTask?.dueEpochDay)
+    }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
-        containerColor = palette.card
+        containerColor = palette.card,
+        sheetState = sheetState
     ) {
         Column(
             modifier = Modifier
@@ -3146,22 +3262,97 @@ private fun EditSheet(
                 colors = textFieldColors(palette),
                 singleLine = true
             )
-            Spacer(modifier = Modifier.height(10.dp))
-            TextField(
-                value = value,
-                onValueChange = { value = it.filter(Char::isDigit) },
-                modifier = Modifier.fillMaxWidth(),
-                placeholder = {
-                    Text(
-                        text = if (isPendingMove) "Set value for Focus" else "0",
-                        color = palette.textSub
-                    )
-                },
-                colors = textFieldColors(palette),
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                singleLine = true
-            )
-            Spacer(modifier = Modifier.height(20.dp))
+            Spacer(modifier = Modifier.height(12.dp))
+            if (isTaskEditor) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalAlignment = Alignment.Top
+                ) {
+                    Column(modifier = Modifier.weight(0.88f)) {
+                        CompactEditLabel(text = "Value", palette = palette)
+                        TextField(
+                            value = value,
+                            onValueChange = { value = it.filter(Char::isDigit) },
+                            modifier = Modifier.fillMaxWidth(),
+                            placeholder = {
+                                Text(
+                                    text = if (isPendingMove) "Set for Focus" else "0",
+                                    color = palette.textSub
+                                )
+                            },
+                            colors = textFieldColors(palette),
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            singleLine = true
+                        )
+                    }
+                    Column(modifier = Modifier.weight(1.12f)) {
+                        CompactEditLabel(text = "Deadline", palette = palette)
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(14.dp))
+                                .background(palette.background)
+                                .border(1.dp, palette.line, RoundedCornerShape(14.dp))
+                                .clickable {
+                                    val initialDate = dueEpochDay
+                                        ?.let(LocalDate::ofEpochDay)
+                                        ?: LocalDate.now(AppZoneId)
+                                    DatePickerDialog(
+                                        context,
+                                        { _, year, month, dayOfMonth ->
+                                            dueEpochDay = LocalDate.of(year, month + 1, dayOfMonth).toEpochDay()
+                                        },
+                                        initialDate.year,
+                                        initialDate.monthValue - 1,
+                                        initialDate.dayOfMonth
+                                    ).show()
+                                }
+                                .padding(horizontal = 14.dp, vertical = 14.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = dueEpochDay?.let(::formatCompactDueDate) ?: "No date",
+                                    color = dueEpochDay?.let { dueBadgeFor(it, palette).color } ?: palette.textMain,
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    maxLines = 1
+                                )
+                                dueEpochDay?.let {
+                                    Text(
+                                        text = "Clear",
+                                        color = palette.textSub,
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        modifier = Modifier.clickable { dueEpochDay = null }
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            } else {
+                CompactEditLabel(text = "Value", palette = palette)
+                TextField(
+                    value = value,
+                    onValueChange = { value = it.filter(Char::isDigit) },
+                    modifier = Modifier.fillMaxWidth(),
+                    placeholder = {
+                        Text(
+                            text = if (isPendingMove) "Set value for Focus" else "0",
+                            color = palette.textSub
+                        )
+                    },
+                    colors = textFieldColors(palette),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    singleLine = true
+                )
+            }
+            Spacer(modifier = Modifier.height(18.dp))
             Row(
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
@@ -3181,7 +3372,7 @@ private fun EditSheet(
                     Text(text = "Delete", color = palette.orange)
                 }
                 TextButton(
-                    onClick = { onSave(title, value) },
+                    onClick = { onSave(title, value, dueEpochDay) },
                     modifier = Modifier
                         .weight(2f)
                         .clip(RoundedCornerShape(12.dp))
@@ -3239,6 +3430,62 @@ private fun lerpFloat(start: Float, stop: Float, progress: Float): Float {
     return start + (stop - start) * progress.coerceIn(0f, 1f)
 }
 
+private data class DueBadge(
+    val text: String,
+    val color: Color
+)
+
+private fun sortTasksForDisplay(
+    tasks: List<KudoTask>,
+    sortMode: Int
+): List<KudoTask> {
+    return when (sortMode) {
+        KudoState.TASK_SORT_MANUAL -> tasks.sortedWith(
+            compareBy<KudoTask>({ it.order }, { it.id })
+        )
+
+        else -> tasks.sortedWith(
+            compareBy<KudoTask>(
+                { it.dueEpochDay == null },
+                { it.dueEpochDay ?: Long.MAX_VALUE }
+            )
+        )
+    }
+}
+
+private fun dueBadgeFor(
+    dueEpochDay: Long,
+    palette: KudoPalette
+): DueBadge {
+    val dueDate = LocalDate.ofEpochDay(dueEpochDay)
+    val today = LocalDate.now(AppZoneId)
+    return when {
+        dueDate.isBefore(today) -> DueBadge(
+            text = "Overdue · ${dueDate.format(DueDateFormatter)}",
+            color = palette.red
+        )
+
+        dueDate == today -> DueBadge(
+            text = "Today",
+            color = palette.orange
+        )
+
+        dueDate == today.plusDays(1) -> DueBadge(
+            text = "Tomorrow",
+            color = palette.blue
+        )
+
+        else -> DueBadge(
+            text = dueDate.format(DueDateFormatter),
+            color = palette.textSub
+        )
+    }
+}
+
+private fun formatCompactDueDate(dueEpochDay: Long): String {
+    return LocalDate.ofEpochDay(dueEpochDay).format(EditableDueDateFormatter)
+}
+
 private fun formatTime(timestamp: Long): String {
     return Instant.ofEpochMilli(timestamp)
         .atZone(AppZoneId)
@@ -3287,3 +3534,7 @@ private val AppZoneId: ZoneId = ZoneId.systemDefault()
 private val TimeFormatter: DateTimeFormatter = DateTimeFormatter.ofPattern("H:mm", Locale.getDefault())
 private val DayHeaderFormatter: DateTimeFormatter =
     DateTimeFormatter.ofPattern("MMM dd", Locale.getDefault())
+private val DueDateFormatter: DateTimeFormatter =
+    DateTimeFormatter.ofPattern("MMM d", Locale.getDefault())
+private val EditableDueDateFormatter: DateTimeFormatter =
+    DateTimeFormatter.ofPattern("EEE, MMM d", Locale.getDefault())

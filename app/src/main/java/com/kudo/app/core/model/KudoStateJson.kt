@@ -22,7 +22,9 @@ object KudoStateJson {
                     logs = root.optJSONArray("logs").toLogList(),
                     recentVals = root.optJSONArray("recentVals").toIntList(),
                     multiplier = root.optDouble("multiplier", 1.0).toFloat(),
-                    listMode = root.optString("listMode", KudoState.LIST_FOCUS)
+                    listMode = root.optString("listMode", KudoState.LIST_FOCUS),
+                    focusSortMode = root.optInt("focusSortMode", KudoState.TASK_SORT_AUTO_DUE),
+                    inboxSortMode = root.optInt("inboxSortMode", KudoState.TASK_SORT_AUTO_DUE)
                 )
             )
         } catch (_: Exception) {
@@ -37,6 +39,8 @@ object KudoStateJson {
         root.put("maxCoins", state.maxCoins)
         root.put("multiplier", state.multiplier.toDouble())
         root.put("listMode", state.listMode)
+        root.put("focusSortMode", state.focusSortMode)
+        root.put("inboxSortMode", state.inboxSortMode)
 
         val recentVals = JSONArray()
         state.recentVals.forEach(recentVals::put)
@@ -54,6 +58,9 @@ object KudoStateJson {
                     .put("last", task.last)
                     .put("list", task.list)
                     .put("order", task.order)
+                    .apply {
+                        task.dueEpochDay?.let { put("due", it) }
+                    }
             )
         }
         root.put("tasks", tasks)
@@ -94,6 +101,7 @@ object KudoStateJson {
                             put("last", item.last)
                             put("list", item.list)
                             put("order", item.order)
+                            item.dueEpochDay?.let { put("due", it) }
                         }
                 )
             }
@@ -115,8 +123,7 @@ object KudoStateJson {
                     KudoState.LIST_FOCUS,
                     KudoState.LIST_INBOX -> task.list
                     else -> KudoState.LIST_FOCUS
-                },
-                order = if (task.order == 0L) task.id else task.order
+                }
             )
         }
 
@@ -126,7 +133,9 @@ object KudoStateJson {
                 KudoState.LIST_FOCUS,
                 KudoState.LIST_INBOX -> state.listMode
                 else -> KudoState.LIST_FOCUS
-            }
+            },
+            focusSortMode = sanitizeTaskSortMode(state.focusSortMode),
+            inboxSortMode = sanitizeTaskSortMode(state.inboxSortMode)
         )
     }
 
@@ -154,7 +163,8 @@ object KudoStateJson {
                         count = json.optInt("count", 0),
                         last = json.optLong("last", 0L),
                         list = json.optString("list", KudoState.LIST_FOCUS),
-                        order = json.optLong("order", id)
+                        order = json.optLong("order", id),
+                        dueEpochDay = if (json.has("due")) json.optLong("due") else null
                     )
                 )
             }
@@ -203,12 +213,21 @@ object KudoStateJson {
                                 count = it.optInt("count", 0),
                                 last = it.optLong("last", 0L),
                                 list = it.optString("list", KudoState.LIST_FOCUS),
-                                order = it.optLong("order", id)
+                                order = it.optLong("order", id),
+                                dueEpochDay = if (it.has("due")) it.optLong("due") else null
                             )
                         }
                     )
                 )
             }
+        }
+    }
+
+    private fun sanitizeTaskSortMode(mode: Int): Int {
+        return when (mode) {
+            KudoState.TASK_SORT_AUTO_DUE,
+            KudoState.TASK_SORT_MANUAL -> mode
+            else -> KudoState.TASK_SORT_AUTO_DUE
         }
     }
 }

@@ -17,6 +17,20 @@ object KudoReducer {
         list: String,
         now: Long = System.currentTimeMillis()
     ): KudoState {
+        val resolvedList = if (type == KudoState.TYPE_HABIT) KudoState.LIST_FOCUS else list
+        val nextOrder = if (
+            type == KudoState.TYPE_TASK &&
+            state.taskSortModeFor(resolvedList) == KudoState.TASK_SORT_MANUAL
+        ) {
+            state.tasks
+                .asSequence()
+                .filter { it.type == KudoState.TYPE_TASK && it.list == resolvedList }
+                .minOfOrNull(KudoTask::order)
+                ?.minus(1L)
+                ?: 0L
+        } else {
+            now
+        }
         val item = KudoTask(
             id = now,
             title = title,
@@ -24,8 +38,8 @@ object KudoReducer {
             type = type,
             count = 0,
             last = 0L,
-            list = if (type == KudoState.TYPE_HABIT) KudoState.LIST_FOCUS else list,
-            order = now
+            list = resolvedList,
+            order = nextOrder
         )
         return KudoStateJson.sanitize(
             state.copy(tasks = listOf(item) + state.tasks)
@@ -60,21 +74,31 @@ object KudoReducer {
                 return MoveTaskResult(state = state, requiresValue = true)
             }
 
+            val destinationList = KudoState.LIST_FOCUS
             val updated = state.tasks.map { current ->
                 if (current.id != id) {
                     current
                 } else {
                     current.copy(
                         valAmount = assignedValueForInboxToFocus ?: current.valAmount,
-                        list = KudoState.LIST_FOCUS
+                        list = destinationList,
+                        order = nextTaskOrderForList(state, destinationList, current.order)
                     )
                 }
             }
             return MoveTaskResult(state.copy(tasks = updated))
         }
 
+        val destinationList = KudoState.LIST_INBOX
         val updated = state.tasks.map { current ->
-            if (current.id == id) current.copy(list = KudoState.LIST_INBOX) else current
+            if (current.id == id) {
+                current.copy(
+                    list = destinationList,
+                    order = nextTaskOrderForList(state, destinationList, current.order)
+                )
+            } else {
+                current
+            }
         }
         return MoveTaskResult(state.copy(tasks = updated))
     }
@@ -204,19 +228,37 @@ object KudoReducer {
         return nextState.copy(logs = nextState.logs.filterIndexed { logIndex, _ -> logIndex != index })
     }
 
-    fun updateTask(state: KudoState, id: Long, title: String, value: Int): KudoState {
+    fun updateTask(
+        state: KudoState,
+        id: Long,
+        title: String,
+        value: Int,
+        dueEpochDay: Long?
+    ): KudoState {
         return state.copy(
             tasks = state.tasks.map { task ->
                 if (task.id == id) {
                     task.copy(
                         title = title.ifBlank { task.title },
-                        valAmount = value
+                        valAmount = value,
+                        dueEpochDay = dueEpochDay
                     )
                 } else {
                     task
                 }
             }
         )
+    }
+
+    fun setTaskSortMode(state: KudoState, listMode: String, sortMode: Int): KudoState {
+        val sanitizedSortMode = when (sortMode) {
+            KudoState.TASK_SORT_MANUAL -> KudoState.TASK_SORT_MANUAL
+            else -> KudoState.TASK_SORT_AUTO_DUE
+        }
+        return when (listMode) {
+            KudoState.LIST_INBOX -> state.copy(inboxSortMode = sanitizedSortMode)
+            else -> state.copy(focusSortMode = sanitizedSortMode)
+        }
     }
 
     fun updateStoreItem(state: KudoState, id: Long, title: String, cost: Int): KudoState {
@@ -347,5 +389,21 @@ object KudoReducer {
             multiplier = updatedMultiplier,
             recentVals = updatedRecentVals
         )
+    }
+
+    private fun nextTaskOrderForList(
+        state: KudoState,
+        list: String,
+        fallback: Long
+    ): Long {
+        if (state.taskSortModeFor(list) != KudoState.TASK_SORT_MANUAL) {
+            return fallback
+        }
+        return state.tasks
+            .asSequence()
+            .filter { it.type == KudoState.TYPE_TASK && it.list == list }
+            .minOfOrNull(KudoTask::order)
+            ?.minus(1L)
+            ?: 0L
     }
 }

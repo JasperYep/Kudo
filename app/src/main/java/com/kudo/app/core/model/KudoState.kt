@@ -13,13 +13,22 @@ data class KudoState(
     val logs: List<KudoLogEntry> = emptyList(),
     val recentVals: List<Int> = emptyList(),
     val multiplier: Float = 1.0f,
-    val listMode: String = LIST_FOCUS
+    val listMode: String = LIST_FOCUS,
+    val focusSortMode: Int = TASK_SORT_AUTO_DUE,
+    val inboxSortMode: Int = TASK_SORT_AUTO_DUE
 ) {
     val level: Int
         get() = sqrt(life / 100.0).toInt() + 1
 
     val finalMultiplier: Float
         get() = multiplier * (1 + (level - 1) * 0.01f)
+
+    fun taskSortModeFor(list: String): Int {
+        return when (list) {
+            LIST_INBOX -> inboxSortMode
+            else -> focusSortMode
+        }
+    }
 
     companion object {
         const val LIST_FOCUS = "focus"
@@ -30,6 +39,9 @@ data class KudoState(
 
         const val STORE_ONCE = 0
         const val STORE_INFINITE = 1
+
+        const val TASK_SORT_AUTO_DUE = 0
+        const val TASK_SORT_MANUAL = 1
     }
 }
 
@@ -42,7 +54,8 @@ data class KudoTask(
     val count: Int = 0,
     val last: Long = 0L,
     val list: String = KudoState.LIST_FOCUS,
-    val order: Long = id
+    val order: Long = id,
+    val dueEpochDay: Long? = null
 ) {
     val isHabit: Boolean
         get() = type == KudoState.TYPE_HABIT
@@ -77,7 +90,8 @@ data class KudoLogItemData(
     val count: Int = 0,
     val last: Long = 0L,
     val list: String = KudoState.LIST_FOCUS,
-    val order: Long = id
+    val order: Long = id,
+    val dueEpochDay: Long? = null
 ) {
     fun toTask(): KudoTask = KudoTask(
         id = id,
@@ -87,7 +101,8 @@ data class KudoLogItemData(
         count = count,
         last = last,
         list = list,
-        order = order
+        order = order,
+        dueEpochDay = dueEpochDay
     )
 
     fun toStoreItem(): KudoStoreItem = KudoStoreItem(
@@ -106,7 +121,8 @@ data class KudoLogItemData(
             count = task.count,
             last = task.last,
             list = task.list,
-            order = task.order
+            order = task.order,
+            dueEpochDay = task.dueEpochDay
         )
 
         fun fromStoreItem(item: KudoStoreItem): KudoLogItemData = KudoLogItemData(

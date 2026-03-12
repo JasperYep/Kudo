@@ -279,7 +279,7 @@ class KudoViewModel(application: Application) : AndroidViewModel(application) {
         pendingMoveTaskId.value = null
     }
 
-    fun saveEditing(title: String, valueInput: String) {
+    fun saveEditing(title: String, valueInput: String, dueEpochDay: Long?) {
         val target = editingTarget.value ?: return
         val pendingTaskId = pendingMoveTaskId.value
         val sanitizedTitle = title.trim()
@@ -293,21 +293,23 @@ class KudoViewModel(application: Application) : AndroidViewModel(application) {
                     val updatedValue = if (valueInput.isBlank()) 10 else parsedValue
                     KudoReducer.moveTask(
                         state = KudoReducer.updateTask(
-                            state = state,
-                            id = pendingTaskId,
-                            title = updatedTitle,
-                            value = updatedValue
-                        ),
+                        state = state,
                         id = pendingTaskId,
-                        assignedValueForInboxToFocus = updatedValue
-                    ).state
-                } else {
+                        title = updatedTitle,
+                        value = updatedValue,
+                        dueEpochDay = dueEpochDay
+                    ),
+                    id = pendingTaskId,
+                    assignedValueForInboxToFocus = updatedValue
+                ).state
+            } else {
                     when (target.kind) {
                         KIND_TASK -> KudoReducer.updateTask(
                             state = state,
                             id = target.id,
                             title = sanitizedTitle,
-                            value = parsedValue
+                            value = parsedValue,
+                            dueEpochDay = dueEpochDay
                         )
 
                         KIND_STORE -> KudoReducer.updateStoreItem(
@@ -369,7 +371,23 @@ class KudoViewModel(application: Application) : AndroidViewModel(application) {
     fun reorderCurrentTaskList(orderedIds: List<Long>) {
         viewModelScope.launch {
             repository.updateState { state ->
-                KudoReducer.reorderTasks(state, state.listMode, orderedIds)
+                KudoReducer.setTaskSortMode(
+                    state = KudoReducer.reorderTasks(state, state.listMode, orderedIds),
+                    listMode = state.listMode,
+                    sortMode = KudoState.TASK_SORT_MANUAL
+                )
+            }
+        }
+    }
+
+    fun resetTaskSortMode(listMode: String) {
+        viewModelScope.launch {
+            repository.updateState { state ->
+                KudoReducer.setTaskSortMode(
+                    state = state,
+                    listMode = listMode,
+                    sortMode = KudoState.TASK_SORT_AUTO_DUE
+                )
             }
         }
     }
