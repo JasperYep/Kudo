@@ -27,9 +27,24 @@ jobs:
         shell: bash
         env:
           ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
           if [ -z "$ANDROID_KEYSTORE_BASE64" ]; then
             echo "ANDROID_KEYSTORE_BASE64 is not set"
+            exit 1
+          fi
+          if [ -z "$ANDROID_KEYSTORE_PASSWORD" ]; then
+            echo "ANDROID_KEYSTORE_PASSWORD is not set"
+            exit 1
+          fi
+          if [ -z "$ANDROID_KEY_ALIAS" ]; then
+            echo "ANDROID_KEY_ALIAS is not set"
+            exit 1
+          fi
+          if [ -z "$ANDROID_KEY_PASSWORD" ]; then
+            echo "ANDROID_KEY_PASSWORD is not set"
             exit 1
           fi
           echo "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/kudo-release.keystore"
@@ -47,9 +62,10 @@ jobs:
       - name: Rename APK for release
         shell: bash
         run: |
-          APK_PATH="app/build/outputs/apk/release/app-release.apk"
+          APK_PATH="$(find app/build/outputs/apk/release -maxdepth 1 -type f -name 'app-release*.apk' | head -n 1)"
           if [ ! -f "$APK_PATH" ]; then
-            echo "Signed release APK not found at $APK_PATH"
+            echo "Release APK not found under app/build/outputs/apk/release"
+            find app/build/outputs/apk/release -maxdepth 2 -type f
             exit 1
           fi
           cp "$APK_PATH" "app/build/outputs/apk/release/Kudo-${GITHUB_REF_NAME}.apk"
