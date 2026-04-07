@@ -352,38 +352,6 @@ object KudoReducer {
         return state.copy(store = state.store.filterNot { it.id == id })
     }
 
-    fun moveTaskItem(state: KudoState, fromId: Long, toId: Long): KudoState {
-        val fromIndex = state.tasks.indexOfFirst { it.id == fromId }
-        val toIndex = state.tasks.indexOfFirst { it.id == toId }
-        if (fromIndex == -1 || toIndex == -1 || fromIndex == toIndex) {
-            return state
-        }
-
-        val mutable = state.tasks.toMutableList()
-        val item = mutable.removeAt(fromIndex)
-        val insertIndex = if (fromIndex < toIndex) toIndex else toIndex
-        mutable.add(insertIndex, item)
-        return state.copy(
-            tasks = mutable.mapIndexed { index, task ->
-                task.copy(order = index.toLong())
-            }
-        )
-    }
-
-    fun moveStoreItem(state: KudoState, fromId: Long, toId: Long): KudoState {
-        val fromIndex = state.store.indexOfFirst { it.id == fromId }
-        val toIndex = state.store.indexOfFirst { it.id == toId }
-        if (fromIndex == -1 || toIndex == -1 || fromIndex == toIndex) {
-            return state
-        }
-
-        val mutable = state.store.toMutableList()
-        val item = mutable.removeAt(fromIndex)
-        val insertIndex = if (fromIndex < toIndex) toIndex else toIndex
-        mutable.add(insertIndex, item)
-        return state.copy(store = mutable)
-    }
-
     fun reorderHabits(state: KudoState, orderedIds: List<Long>): KudoState {
         return reorderTaskSubset(
             state = state,

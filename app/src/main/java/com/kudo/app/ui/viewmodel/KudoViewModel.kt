@@ -91,24 +91,8 @@ class KudoViewModel(application: Application) : AndroidViewModel(application) {
         currentView.value = view
     }
 
-    fun toggleListMode() {
-        viewModelScope.launch {
-            repository.updateState { state ->
-                state.copy(
-                    listMode = if (state.listMode == KudoState.LIST_FOCUS) {
-                        KudoState.LIST_INBOX
-                    } else {
-                        KudoState.LIST_FOCUS
-                    }
-                )
-            }
-        }
-    }
-
     fun setListMode(mode: String) {
-        viewModelScope.launch {
-            repository.updateState { it.copy(listMode = mode) }
-        }
+        launchStateUpdate { it.copy(listMode = mode) }
     }
 
     fun cycleTaskCreationTarget() {
@@ -134,10 +118,7 @@ class KudoViewModel(application: Application) : AndroidViewModel(application) {
         }
 
         val current = uiState.value
-        val parsedValue = parseDashboardValue(
-            raw = valueInput,
-            view = current.currentView
-        )
+        val parsedValue = parseDashboardValue(valueInput)
         val createdId = System.currentTimeMillis()
         val isStoreInsert = current.currentView == VIEW_STORE
         val isTaskInsertAnimation = !isStoreInsert && current.taskCreationTarget != TaskCreationTarget.HABIT
@@ -178,61 +159,41 @@ class KudoViewModel(application: Application) : AndroidViewModel(application) {
             }
         }
         if (isStoreInsert) {
-            clearRecentStoreInsert(createdId)
+            clearRecentInsert(
+                target = recentStoreInsertId,
+                id = createdId
+            )
         } else if (isTaskInsertAnimation) {
-            clearRecentTaskInsert(createdId)
+            clearRecentInsert(
+                target = recentTaskInsertId,
+                id = createdId
+            )
         }
         return true
     }
 
-    private fun clearRecentTaskInsert(id: Long) {
+    private fun clearRecentInsert(
+        target: MutableStateFlow<Long?>,
+        id: Long
+    ) {
         viewModelScope.launch {
             delay(380)
-            if (recentTaskInsertId.value == id) {
-                recentTaskInsertId.value = null
-            }
-        }
-    }
-
-    private fun clearRecentStoreInsert(id: Long) {
-        viewModelScope.launch {
-            delay(380)
-            if (recentStoreInsertId.value == id) {
-                recentStoreInsertId.value = null
+            if (target.value == id) {
+                target.value = null
             }
         }
     }
 
     fun completeTask(id: Long) {
-        viewModelScope.launch {
-            repository.updateState { state -> KudoReducer.completeTask(state, id) }
-        }
+        launchStateUpdate { state -> KudoReducer.completeTask(state, id) }
     }
 
     fun completeHabit(id: Long) {
-        viewModelScope.launch {
-            repository.updateState { state -> KudoReducer.completeHabit(state, id) }
-        }
+        launchStateUpdate { state -> KudoReducer.completeHabit(state, id) }
     }
 
     fun completeSubtask(taskId: Long, subtaskId: Long) {
-        viewModelScope.launch {
-            repository.updateState { state -> KudoReducer.completeSubtask(state, taskId, subtaskId) }
-        }
-    }
-
-    fun moveTask(id: Long) {
-        val current = uiState.value.data
-        val result = KudoReducer.moveTask(current, id)
-        if (result.requiresValue) {
-            pendingMoveTaskId.value = id
-            editingTarget.value = EditingTarget(kind = KIND_TASK, id = id)
-            return
-        }
-
-        viewModelScope.launch {
-            repository.saveState(result.state)
-        }
+        launchStateUpdate { state -> KudoReducer.completeSubtask(state, taskId, subtaskId) }
     }
 
     fun moveTaskFromGesture(id: Long): Boolean {
@@ -244,16 +205,8 @@ class KudoViewModel(application: Application) : AndroidViewModel(application) {
             return false
         }
 
-        viewModelScope.launch {
-            repository.saveState(result.state)
-        }
+        launchSaveState(result.state)
         return true
-    }
-
-    fun purchaseItem(id: Long) {
-        viewModelScope.launch {
-            repository.updateState { state -> KudoReducer.buyItem(state, id) }
-        }
     }
 
     fun purchaseItemFromGesture(id: Long): Boolean {
@@ -263,16 +216,12 @@ class KudoViewModel(application: Application) : AndroidViewModel(application) {
             return false
         }
 
-        viewModelScope.launch {
-            repository.updateState { state -> KudoReducer.buyItem(state, id) }
-        }
+        launchStateUpdate { state -> KudoReducer.buyItem(state, id) }
         return true
     }
 
     fun undoLog(index: Int) {
-        viewModelScope.launch {
-            repository.updateState { state -> KudoReducer.undoLog(state, index) }
-        }
+        launchStateUpdate { state -> KudoReducer.undoLog(state, index) }
     }
 
     fun openEditTask(id: Long) {
@@ -311,7 +260,7 @@ class KudoViewModel(application: Application) : AndroidViewModel(application) {
         }
         val editTimestamp = System.currentTimeMillis()
 
-        viewModelScope.launch {
+        launchAsync {
             repository.updateState { state ->
                 if (pendingTaskId != null) {
                     val task = state.tasks.firstOrNull { it.id == pendingTaskId } ?: return@updateState state
@@ -359,7 +308,7 @@ class KudoViewModel(application: Application) : AndroidViewModel(application) {
 
     fun deleteEditing() {
         val target = editingTarget.value ?: return
-        viewModelScope.launch {
+        launchAsync {
             repository.updateState { state ->
                 when (target.kind) {
                     KIND_TASK -> KudoReducer.deleteTask(state, target.id)
@@ -400,104 +349,82 @@ class KudoViewModel(application: Application) : AndroidViewModel(application) {
 
     fun reorderCurrentTaskList(orderedIds: List<Long>) {
         val listMode = uiState.value.data.listMode
-        viewModelScope.launch {
-            repository.updateState { state ->
-                KudoReducer.setTaskSortMode(
-                    state = KudoReducer.reorderTasks(state, listMode, orderedIds),
-                    listMode = listMode,
-                    sortMode = KudoState.TASK_SORT_MANUAL
-                )
-            }
+        launchStateUpdate { state ->
+            KudoReducer.setTaskSortMode(
+                state = KudoReducer.reorderTasks(state, listMode, orderedIds),
+                listMode = listMode,
+                sortMode = KudoState.TASK_SORT_MANUAL
+            )
         }
     }
 
     fun resetTaskSortMode(listMode: String) {
-        viewModelScope.launch {
-            repository.updateState { state ->
-                KudoReducer.setTaskSortMode(
-                    state = state,
-                    listMode = listMode,
-                    sortMode = KudoState.TASK_SORT_AUTO_DUE
-                )
-            }
+        launchStateUpdate { state ->
+            KudoReducer.setTaskSortMode(
+                state = state,
+                listMode = listMode,
+                sortMode = KudoState.TASK_SORT_AUTO_DUE
+            )
         }
     }
 
     fun reorderHabits(orderedIds: List<Long>) {
-        viewModelScope.launch {
-            repository.updateState { state ->
-                KudoReducer.reorderHabits(state, orderedIds)
-            }
-        }
+        launchStateUpdate { state -> KudoReducer.reorderHabits(state, orderedIds) }
     }
 
     fun reorderStore(orderedIds: List<Long>) {
-        viewModelScope.launch {
-            repository.updateState { state ->
-                KudoReducer.reorderStore(state, orderedIds)
-            }
-        }
+        launchStateUpdate { state -> KudoReducer.reorderStore(state, orderedIds) }
     }
 
     fun deleteTaskItem(id: Long) {
-        viewModelScope.launch {
-            repository.updateState { state ->
-                KudoReducer.deleteTask(state, id)
-            }
-        }
+        launchStateUpdate { state -> KudoReducer.deleteTask(state, id) }
     }
 
     fun setTheme(theme: String) {
-        viewModelScope.launch {
-            repository.setTheme(theme)
-        }
+        launchAsync { repository.setTheme(theme) }
     }
 
     fun setSubtaskModeEnabled(enabled: Boolean) {
-        viewModelScope.launch {
-            repository.setSubtaskModeEnabled(enabled)
-        }
-    }
-
-    fun exportJson(onComplete: (String) -> Unit) {
-        viewModelScope.launch {
-            onComplete(repository.exportJson())
-        }
+        launchAsync { repository.setSubtaskModeEnabled(enabled) }
     }
 
     fun exportToUri(uri: Uri, onComplete: (Boolean) -> Unit = {}) {
-        viewModelScope.launch {
+        launchAsync {
             onComplete(repository.exportToUri(uri))
         }
     }
 
-    fun importJson(raw: String, onComplete: (Boolean) -> Unit = {}) {
-        viewModelScope.launch {
-            onComplete(repository.importJson(raw))
-        }
-    }
-
     fun importFromUri(uri: Uri, onComplete: (Boolean) -> Unit = {}) {
-        viewModelScope.launch {
+        launchAsync {
             onComplete(repository.importFromUri(uri))
         }
     }
 
-    private fun parseDashboardValue(
-        raw: String,
-        view: String
-    ): Int {
+    private fun parseDashboardValue(raw: String): Int {
         if (raw.isBlank()) {
-            return when (view) {
-                VIEW_STORE -> 0
-                else -> 0 // Zero-friction default
-            }
+            return 0
         }
         return parseEditValue(raw)
     }
 
     private fun parseEditValue(raw: String): Int {
         return raw.toIntOrNull()?.let(::abs) ?: 0
+    }
+
+    private fun launchAsync(block: suspend () -> Unit) {
+        viewModelScope.launch { block() }
+    }
+
+    private fun launchStateUpdate(transform: (KudoState) -> KudoState) {
+        launchAsync {
+            repository.updateState(transform)
+        }
+    }
+
+    private fun launchSaveState(state: KudoState) {
+        launchAsync {
+            repository.saveState(state)
+        }
     }
 
     companion object {

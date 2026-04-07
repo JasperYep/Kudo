@@ -67,20 +67,14 @@ class KudoStateRepository(
     }
 
     suspend fun saveState(state: KudoState) {
-        val encoded = withContext(Dispatchers.Default) {
-            KudoStateJson.encode(KudoStateJson.sanitize(state))
-        }
+        val encoded = encodeState(state)
         context.dataStore.edit { preferences ->
             preferences[Keys.STATE_JSON] = encoded
         }
     }
 
     suspend fun updateState(transform: (KudoState) -> KudoState) {
-        val encoded = withContext(Dispatchers.Default) {
-            KudoStateJson.encode(
-                KudoStateJson.sanitize(transform(snapshot.value.state))
-            )
-        }
+        val encoded = encodeState(transform(snapshot.value.state))
         context.dataStore.edit { preferences ->
             preferences[Keys.STATE_JSON] = encoded
         }
@@ -104,6 +98,12 @@ class KudoStateRepository(
 
     suspend fun exportJson(): String {
         return KudoStateJson.encode(getState())
+    }
+
+    private suspend fun encodeState(state: KudoState): String {
+        return withContext(Dispatchers.Default) {
+            KudoStateJson.encode(KudoStateJson.sanitize(state))
+        }
     }
 
     suspend fun exportToUri(uri: Uri): Boolean = withContext(Dispatchers.IO) {
