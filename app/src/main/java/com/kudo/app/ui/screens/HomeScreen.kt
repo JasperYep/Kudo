@@ -4,6 +4,7 @@ package com.kudo.app.ui.screens
 
 import android.app.DatePickerDialog
 import android.net.Uri
+import android.os.SystemClock
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -11,6 +12,7 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.MutableTransitionState
 import androidx.compose.animation.core.CubicBezierEasing
@@ -33,11 +35,13 @@ import org.burnoutcrew.reorderable.detectReorderAfterLongPress
 import org.burnoutcrew.reorderable.reorderable
 import org.burnoutcrew.reorderable.rememberReorderableLazyListState
 import org.burnoutcrew.reorderable.ReorderableItem
+import org.burnoutcrew.reorderable.SpringDragCancelledAnimation
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -46,6 +50,8 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitLongPressOrCancellation
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.gestures.draggable
@@ -61,6 +67,8 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -70,6 +78,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.ArrowBack
@@ -104,6 +113,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.Immutable
@@ -121,6 +131,7 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalViewConfiguration
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -141,10 +152,12 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.text.PlatformTextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
@@ -152,6 +165,8 @@ import com.kudo.app.core.platform.KudoHaptics
 import com.kudo.app.core.model.KudoLogEntry
 import com.kudo.app.core.model.KudoState
 import com.kudo.app.core.model.KudoStoreItem
+import com.kudo.app.core.model.KudoSubtask
+import com.kudo.app.core.model.KudoSubtaskDraft
 import com.kudo.app.core.model.KudoTask
 import com.kudo.app.core.repository.KudoStateRepository
 import com.kudo.app.ui.theme.DarkBackground
@@ -217,7 +232,13 @@ fun HomeScreen(
     var pendingImportUri by remember { mutableStateOf<Uri?>(null) }
     var isFileTransferInProgress by remember { mutableStateOf(false) }
     var activeComposerRevealProgress by remember { mutableFloatStateOf(0f) }
-    val tasksListState = rememberLazyListState()
+    val focusTasksListState = rememberLazyListState()
+    val inboxTasksListState = rememberLazyListState()
+    val tasksListState = if (uiState.data.listMode == KudoState.LIST_INBOX) {
+        inboxTasksListState
+    } else {
+        focusTasksListState
+    }
     val storeListState = rememberLazyListState()
     val logListState = rememberLazyListState()
     LaunchedEffect(uiState.currentView) {
@@ -298,12 +319,13 @@ fun HomeScreen(
                             }
                         },
                         onRevealProgressChanged = { activeComposerRevealProgress = it }
-                    ) { modifier, pageScrollEnabled ->
+                    ) { modifier, pageScrollEnabled, onGestureLockChange ->
                         TasksPage(
                             uiState = uiState,
                             palette = palette,
                             modifier = modifier,
                             userScrollEnabled = pageScrollEnabled,
+                            onGestureLockChange = onGestureLockChange,
                             onToggleHabits = viewModel::toggleHabitsCollapsed,
                             onSetListMode = viewModel::setListMode,
                             onResetTaskSortMode = viewModel::resetTaskSortMode,
@@ -313,6 +335,7 @@ fun HomeScreen(
                             onReorderTask = viewModel::reorderCurrentTaskList,
                             onReorderHabits = viewModel::reorderHabits,
                             onCompleteTask = viewModel::completeTask,
+                            onCompleteSubtask = viewModel::completeSubtask,
                             onMoveTaskGesture = viewModel::moveTaskFromGesture,
                             onEditTask = viewModel::openEditTask,
                             onCompleteHabit = viewModel::completeHabit,
@@ -339,12 +362,13 @@ fun HomeScreen(
                             }
                         },
                         onRevealProgressChanged = { activeComposerRevealProgress = it }
-                    ) { modifier, pageScrollEnabled ->
+                    ) { modifier, pageScrollEnabled, onGestureLockChange ->
                         StorePage(
                             uiState = uiState,
                             palette = palette,
                             modifier = modifier,
                             userScrollEnabled = pageScrollEnabled,
+                            onGestureLockChange = onGestureLockChange,
                             onReorderStore = viewModel::reorderStore,
                             onBuyGesture = viewModel::purchaseItemFromGesture,
                             onEdit = viewModel::openEditStore,
@@ -372,6 +396,7 @@ fun HomeScreen(
             onDismiss = viewModel::closeSettings,
             onToggleHelp = viewModel::toggleHelp,
             onSetTheme = viewModel::setTheme,
+            onSetSubtaskModeEnabled = viewModel::setSubtaskModeEnabled,
             onExport = {
                 val filename = "kudo_backup_${System.currentTimeMillis()}.json"
                 exportLauncher.launch(filename)
@@ -453,6 +478,15 @@ private val HeaderHeight = 120.dp
 private const val HapticTickMs = 8L
 private const val HapticConfirmMs = 12L
 private const val HapticErrorMs = 24L
+private const val ReorderSwapHapticMs = 4L
+private const val ReorderSwapHapticCooldownMs = 42L
+private const val ReorderCancelAnimationStiffness = 520f
+private val ReorderAutoScrollMax = 34.dp
+private val EditControlShape = RoundedCornerShape(16.dp)
+private val EditFieldMinHeight = 54.dp
+private val EditButtonHeight = 50.dp
+private val EditChipSize = 34.dp
+private val TaskTabBalanceRowEstimate = 60.dp
 
 private fun staticPalette(isDark: Boolean): KudoPalette {
     return if (isDark) {
@@ -576,13 +610,14 @@ private fun PullComposerPage(
     onModeToggle: () -> Unit,
     onAdd: () -> Boolean,
     onRevealProgressChanged: (Float) -> Unit,
-    content: @Composable (Modifier, Boolean) -> Unit
+    content: @Composable (Modifier, Boolean, (Boolean) -> Unit) -> Unit
 ) {
     var composerMeasuredHeightPx by remember { mutableFloatStateOf(1f) }
     var composerOpenHapticArmed by remember { mutableStateOf(true) }
     var composerOpenHapticPending by remember { mutableStateOf(false) }
     var composerAnimationTargetPx by remember { mutableFloatStateOf(0f) }
     var composerAnimationJob by remember { mutableStateOf<Job?>(null) }
+    var childGestureLocked by remember { mutableStateOf(false) }
 
     val isListAtTop by remember(listState) {
         derivedStateOf {
@@ -612,6 +647,7 @@ private fun PullComposerPage(
         0f
     }
     val pageScrollEnabled =
+        !childGestureLocked &&
         composerAnimationTargetPx <= 1f &&
             composerRevealProgress <= composerClosedRearmProgress
 
@@ -716,7 +752,13 @@ private fun PullComposerPage(
         modifier = modifier
             .fillMaxSize()
             .background(palette.background)
-            .pointerInput(isListAtTop, composerRevealProgress, composerAnimationTargetPx) {
+            .pointerInput(
+                isListAtTop,
+                composerRevealProgress,
+                composerAnimationTargetPx,
+                childGestureLocked
+            ) {
+                if (childGestureLocked) return@pointerInput
                 awaitEachGesture {
                     val down = awaitFirstDown(
                         requireUnconsumed = false,
@@ -788,8 +830,8 @@ private fun PullComposerPage(
                     }
                 }
             }
-            .pointerInput(composerRevealProgress, blankTapSlopPx) {
-                if (composerRevealProgress < 0.98f) return@pointerInput
+            .pointerInput(composerRevealProgress, blankTapSlopPx, childGestureLocked) {
+                if (childGestureLocked || composerRevealProgress < 0.98f) return@pointerInput
                 awaitEachGesture {
                     val down = awaitFirstDown(
                         requireUnconsumed = false,
@@ -853,7 +895,12 @@ private fun PullComposerPage(
                     .fillMaxWidth()
                     .weight(1f)
             ) {
-                content(Modifier.fillMaxSize(), pageScrollEnabled)
+                content(
+                    Modifier.fillMaxSize(),
+                    pageScrollEnabled
+                ) { locked ->
+                    childGestureLocked = locked
+                }
             }
         }
     }
@@ -1168,6 +1215,7 @@ private fun TasksPage(
     palette: KudoPalette,
     modifier: Modifier = Modifier,
     userScrollEnabled: Boolean = true,
+    onGestureLockChange: (Boolean) -> Unit,
     onToggleHabits: () -> Unit,
     onSetListMode: (String) -> Unit,
     onResetTaskSortMode: (String) -> Unit,
@@ -1177,20 +1225,31 @@ private fun TasksPage(
     onReorderTask: (List<Long>) -> Unit,
     onReorderHabits: (List<Long>) -> Unit,
     onCompleteTask: (Long) -> Unit,
+    onCompleteSubtask: (Long, Long) -> Unit,
     onMoveTaskGesture: (Long) -> Boolean,
     onEditTask: (Long) -> Unit,
     onCompleteHabit: (Long) -> Unit,
     listState: LazyListState
 ) {
     val haptics = rememberKudoHaptics()
+    var isHabitGestureLocked by remember { mutableStateOf(false) }
+    var isTaskItemGestureLocked by remember(uiState.data.listMode) { mutableStateOf(false) }
+    var isTaskTabGestureLocked by remember { mutableStateOf(false) }
     val habits = remember(uiState.data.tasks) {
         uiState.data.tasks.filter { it.type == KudoState.TYPE_HABIT }
     }
     var localHabits by remember { mutableStateOf(habits) }
-    LaunchedEffect(habits) {
-        localHabits = habits
-    }
     val currentSortMode = uiState.data.taskSortModeFor(uiState.data.listMode)
+    val focusTaskCount = remember(uiState.data.tasks) {
+        uiState.data.tasks.count {
+            it.type == KudoState.TYPE_TASK && it.list == KudoState.LIST_FOCUS
+        }
+    }
+    val inboxTaskCount = remember(uiState.data.tasks) {
+        uiState.data.tasks.count {
+            it.type == KudoState.TYPE_TASK && it.list == KudoState.LIST_INBOX
+        }
+    }
     val tasks = remember(uiState.data.tasks, uiState.data.listMode, currentSortMode) {
         sortTasksForDisplay(
             tasks = uiState.data.tasks.filter {
@@ -1199,52 +1258,119 @@ private fun TasksPage(
             sortMode = currentSortMode
         )
     }
+    val tabBalanceSpacerHeight = remember(uiState.data.listMode, focusTaskCount, inboxTaskCount) {
+        val hiddenCount = when (uiState.data.listMode) {
+            KudoState.LIST_INBOX -> (focusTaskCount - inboxTaskCount).coerceAtLeast(0)
+            else -> (inboxTaskCount - focusTaskCount).coerceAtLeast(0)
+        }
+        TaskTabBalanceRowEstimate * hiddenCount
+    }
 
     var localTasks by remember(uiState.data.listMode) { mutableStateOf(tasks) }
-    LaunchedEffect(tasks) {
-        localTasks = tasks
-    }
+    var lastTaskSwapHapticAtMs by remember(uiState.data.listMode) { mutableStateOf(0L) }
     val newTopTaskId = localTasks.firstOrNull()?.id?.takeIf { it == uiState.recentTaskInsertId }
+    var expandedTaskIds by rememberSaveable(uiState.data.listMode) { mutableStateOf(emptyList<Long>()) }
+    LaunchedEffect(tasks.map(KudoTask::id)) {
+        expandedTaskIds = expandedTaskIds.filter { expandedId ->
+            tasks.any { it.id == expandedId && it.hasSubtasks }
+        }
+    }
+    LaunchedEffect(uiState.isSubtaskModeEnabled) {
+        if (!uiState.isSubtaskModeEnabled) {
+            expandedTaskIds = emptyList()
+        }
+    }
 
     val localTaskIds = remember(localTasks) { localTasks.map(KudoTask::id).toSet() }
-
-    key(uiState.data.listMode, uiState.habitsCollapsed, habits.size, tasks.size) {
-        val state = rememberReorderableLazyListState(
+    val taskOrderIds = remember(tasks) { tasks.map(KudoTask::id) }
+    val localTaskOrderIds = remember(localTasks) { localTasks.map(KudoTask::id) }
+    val latestLocalTasks by rememberUpdatedState(localTasks)
+    val latestLocalTaskIds by rememberUpdatedState(localTaskIds)
+    val latestTaskOrderIds by rememberUpdatedState(taskOrderIds)
+    val latestLocalTaskOrderIds by rememberUpdatedState(localTaskOrderIds)
+    val latestOnReorderTask by rememberUpdatedState(onReorderTask)
+    var pendingDeleteHabitId by remember { mutableStateOf<Long?>(null) }
+    val dragCancelledAnimation = remember {
+        SpringDragCancelledAnimation(stiffness = ReorderCancelAnimationStiffness)
+    }
+    val state = key(uiState.data.listMode, listState) {
+        rememberReorderableLazyListState(
             onMove = { from, to ->
                 val fromId = from.key as? Long
                 val toId = to.key as? Long
                 if (fromId != null && toId != null) {
-                    localTasks = localTasks.toMutableList().apply {
-                        val fromIndex = indexOfFirst { it.id == fromId }
-                        val toIndex = indexOfFirst { it.id == toId }
-                        if (fromIndex != -1 && toIndex != -1 && fromIndex != toIndex) {
-                            add(toIndex, removeAt(fromIndex))
-                        }
+                    val currentTasks = latestLocalTasks
+                    val fromIndex = currentTasks.indexOfFirst { it.id == fromId }
+                    val toIndex = currentTasks.indexOfFirst { it.id == toId }
+                    val movedTasks = moveListItem(currentTasks, fromIndex, toIndex)
+                    if (movedTasks !== currentTasks) {
+                        localTasks = movedTasks
+                        lastTaskSwapHapticAtMs = maybeTriggerReorderSwapHaptic(
+                            haptics = haptics,
+                            lastHapticAtMs = lastTaskSwapHapticAtMs
+                        )
                     }
                 }
             },
             canDragOver = { draggedOver, dragging ->
-                (draggedOver.key as? Long)?.let(localTaskIds::contains) == true &&
-                    (dragging.key as? Long)?.let(localTaskIds::contains) == true
+                (draggedOver.key as? Long)?.let(latestLocalTaskIds::contains) == true &&
+                    (dragging.key as? Long)?.let(latestLocalTaskIds::contains) == true
             },
             listState = listState,
             onDragEnd = { _, _ ->
-                if (localTasks.map(KudoTask::id) != tasks.map(KudoTask::id)) {
-                    haptics.vibrate(8)
-                    onReorderTask(localTasks.map(KudoTask::id))
+                lastTaskSwapHapticAtMs = 0L
+                if (latestLocalTaskOrderIds != latestTaskOrderIds) {
+                    haptics.vibrate(HapticConfirmMs)
+                    latestOnReorderTask(latestLocalTaskOrderIds)
                 }
             },
-            maxScrollPerFrame = 56.dp
+            maxScrollPerFrame = ReorderAutoScrollMax,
+            dragCancelledAnimation = dragCancelledAnimation
         )
+    }
+    val isTaskReordering by remember(state) {
+        derivedStateOf { state.draggingItemIndex != null }
+    }
+    val isListGestureLocked =
+        isTaskReordering ||
+            isHabitGestureLocked ||
+            isTaskItemGestureLocked ||
+            isTaskTabGestureLocked
 
-        var pendingDeleteHabitId by remember { mutableStateOf<Long?>(null) }
+    LaunchedEffect(habits) {
+        if (!isHabitGestureLocked) {
+            localHabits = habits
+        }
+    }
+    LaunchedEffect(tasks) {
+        if (!isTaskReordering) {
+            localTasks = tasks
+        }
+    }
 
-        LazyColumn(
-            state = state.listState,
-            userScrollEnabled = userScrollEnabled,
-            modifier = modifier
-                .reorderable(state)
-        ) {
+    LaunchedEffect(isListGestureLocked) {
+        onGestureLockChange(isListGestureLocked)
+    }
+    LaunchedEffect(uiState.isHabitJiggleMode) {
+        if (!uiState.isHabitJiggleMode) {
+            isHabitGestureLocked = false
+        }
+    }
+    DisposableEffect(Unit) {
+        onDispose {
+            isHabitGestureLocked = false
+            isTaskItemGestureLocked = false
+            isTaskTabGestureLocked = false
+            onGestureLockChange(false)
+        }
+    }
+
+    LazyColumn(
+        state = state.listState,
+        userScrollEnabled = userScrollEnabled && !isListGestureLocked,
+        modifier = modifier
+            .reorderable(state)
+    ) {
         if (habits.isNotEmpty()) {
             item(key = "habits_header") {
                 SectionHeader(
@@ -1258,19 +1384,30 @@ private fun TasksPage(
                     }
                 )
             }
-            if (!uiState.habitsCollapsed) {
-                item(key = "habits_grid") {
+            item(key = "habits_grid") {
+                AnimatedVisibility(
+                    visible = !uiState.habitsCollapsed,
+                    enter = fadeIn(animationSpec = tween(150)) + expandVertically(
+                        animationSpec = spring(
+                            dampingRatio = 0.86f,
+                            stiffness = 520f
+                        )
+                    ),
+                    exit = fadeOut(animationSpec = tween(120)) + shrinkVertically(
+                        animationSpec = tween(durationMillis = 180)
+                    )
+                ) {
                     HabitsGrid(
                         habits = localHabits,
                         palette = palette,
                         finalMultiplier = uiState.data.finalMultiplier,
                         isJiggleMode = uiState.isHabitJiggleMode,
                         modifier = Modifier.padding(horizontal = 16.dp),
+                        onGestureLockChange = { isHabitGestureLocked = it },
                         onHabitsChange = { localHabits = it },
                         onDragFinished = {
                             if (localHabits.map(KudoTask::id) != habits.map(KudoTask::id)) {
                                 onReorderHabits(localHabits.map(KudoTask::id))
-                                haptics.vibrate(8)
                             }
                         },
                         onCompleteHabit = onCompleteHabit,
@@ -1285,6 +1422,7 @@ private fun TasksPage(
             FocusInboxSwitcher(
                 currentMode = uiState.data.listMode,
                 palette = palette,
+                onGestureLockChange = { isTaskTabGestureLocked = it },
                 onSetListMode = {
                     onExitHabitJiggle()
                     onSetListMode(it)
@@ -1325,48 +1463,40 @@ private fun TasksPage(
                     key = task.id,
                     defaultDraggingModifier = Modifier
                 ) { isDragging ->
-                    if (task.id == newTopTaskId) {
-                        StackInsertItem {
-                            TaskRow(
-                                task = task,
-                                palette = palette,
-                                finalMultiplier = uiState.data.finalMultiplier,
-                                isDragging = isDragging,
-                                modifier = Modifier
-                                    .padding(horizontal = 16.dp, vertical = 2.dp)
-                                    .detectReorderAfterLongPress(state),
-                                swipeEnabled = !isDragging,
-                                onComplete = {
-                                    onExitHabitJiggle()
-                                    onCompleteTask(task.id)
-                                },
-                                onMoveGesture = {
-                                    onExitHabitJiggle()
-                                    onMoveTaskGesture(task.id)
-                                },
-                                onEdit = {
-                                    onExitHabitJiggle()
-                                    onEditTask(task.id)
-                                }
-                            )
-                        }
-                    } else {
+                    AnimatedInsertedItem(animate = task.id == newTopTaskId) {
                         TaskRow(
                             task = task,
                             palette = palette,
                             finalMultiplier = uiState.data.finalMultiplier,
+                            subtaskModeEnabled = uiState.isSubtaskModeEnabled,
                             isDragging = isDragging,
+                            expanded = task.id in expandedTaskIds,
                             modifier = Modifier
                                 .padding(horizontal = 16.dp, vertical = 2.dp)
+                                .lockParentGestureOnLongPress {
+                                    isTaskItemGestureLocked = it
+                                }
+                                .reorderLongPressFeedback(
+                                    enabled = true,
+                                    haptics = haptics
+                                )
                                 .detectReorderAfterLongPress(state),
                             swipeEnabled = !isDragging,
+                            onGestureLockChange = { isTaskItemGestureLocked = it },
                             onComplete = {
                                 onExitHabitJiggle()
                                 onCompleteTask(task.id)
                             },
+                            onCompleteSubtask = { subtaskId ->
+                                onExitHabitJiggle()
+                                onCompleteSubtask(task.id, subtaskId)
+                            },
                             onMoveGesture = {
                                 onExitHabitJiggle()
                                 onMoveTaskGesture(task.id)
+                            },
+                            onToggleExpanded = {
+                                expandedTaskIds = toggleId(expandedTaskIds, task.id)
                             },
                             onEdit = {
                                 onExitHabitJiggle()
@@ -1379,10 +1509,9 @@ private fun TasksPage(
         }
 
         item(key = "tasks_bottom_spacer") {
-            Spacer(modifier = Modifier.height(24.dp))
+            Spacer(modifier = Modifier.height(tabBalanceSpacerHeight + 24.dp))
         }
     }
-
     if (pendingDeleteHabitId != null) {
         AlertDialog(
             onDismissRequest = { pendingDeleteHabitId = null },
@@ -1406,7 +1535,6 @@ private fun TasksPage(
             }
         )
     }
-    }
 }
 
 @Composable
@@ -1415,6 +1543,7 @@ private fun StorePage(
     palette: KudoPalette,
     modifier: Modifier = Modifier,
     userScrollEnabled: Boolean = true,
+    onGestureLockChange: (Boolean) -> Unit,
     onReorderStore: (List<Long>) -> Unit,
     onBuyGesture: (Long) -> Boolean,
     onEdit: (Long) -> Unit,
@@ -1422,39 +1551,77 @@ private fun StorePage(
 ) {
     val haptics = rememberKudoHaptics()
     var localStore by remember { mutableStateOf(uiState.data.store) }
-    LaunchedEffect(uiState.data.store) {
-        localStore = uiState.data.store
-    }
+    var isStoreItemGestureLocked by remember { mutableStateOf(false) }
+    val storeOrderIds = remember(uiState.data.store) { uiState.data.store.map(KudoStoreItem::id) }
+    val localStoreOrderIds = remember(localStore) { localStore.map(KudoStoreItem::id) }
     val newTopStoreId = localStore.firstOrNull()?.id?.takeIf { it == uiState.recentStoreInsertId }
     val storeIds = remember(localStore) { localStore.map(KudoStoreItem::id).toSet() }
+    val latestLocalStore by rememberUpdatedState(localStore)
+    val latestStoreOrderIds by rememberUpdatedState(storeOrderIds)
+    val latestLocalStoreOrderIds by rememberUpdatedState(localStoreOrderIds)
+    val latestStoreIds by rememberUpdatedState(storeIds)
+    val latestOnReorderStore by rememberUpdatedState(onReorderStore)
+    var lastStoreSwapHapticAtMs by remember { mutableStateOf(0L) }
+    val dragCancelledAnimation = remember {
+        SpringDragCancelledAnimation(stiffness = ReorderCancelAnimationStiffness)
+    }
 
     val state = rememberReorderableLazyListState(
         onMove = { from, to ->
-            localStore = localStore.toMutableList().apply {
-                val fromIndex = indexOfFirst { it.id == from.key }
-                val toIndex = indexOfFirst { it.id == to.key }
-                if (fromIndex != -1 && toIndex != -1) {
-                    add(toIndex, removeAt(fromIndex))
+            val fromId = from.key as? Long
+            val toId = to.key as? Long
+            if (fromId != null && toId != null) {
+                val currentStore = latestLocalStore
+                val fromIndex = currentStore.indexOfFirst { it.id == fromId }
+                val toIndex = currentStore.indexOfFirst { it.id == toId }
+                val movedStore = moveListItem(currentStore, fromIndex, toIndex)
+                if (movedStore !== currentStore) {
+                    localStore = movedStore
+                    lastStoreSwapHapticAtMs = maybeTriggerReorderSwapHaptic(
+                        haptics = haptics,
+                        lastHapticAtMs = lastStoreSwapHapticAtMs
+                    )
                 }
             }
         },
         canDragOver = { draggedOver, dragging ->
-            (draggedOver.key as? Long)?.let(storeIds::contains) == true &&
-                (dragging.key as? Long)?.let(storeIds::contains) == true
+            (draggedOver.key as? Long)?.let(latestStoreIds::contains) == true &&
+                (dragging.key as? Long)?.let(latestStoreIds::contains) == true
         },
         listState = listState,
         onDragEnd = { _, _ ->
-            if (localStore.map(KudoStoreItem::id) != uiState.data.store.map(KudoStoreItem::id)) {
-                haptics.vibrate(8)
-                onReorderStore(localStore.map(KudoStoreItem::id))
+            lastStoreSwapHapticAtMs = 0L
+            if (latestLocalStoreOrderIds != latestStoreOrderIds) {
+                haptics.vibrate(HapticConfirmMs)
+                latestOnReorderStore(latestLocalStoreOrderIds)
             }
         },
-        maxScrollPerFrame = 56.dp
+        maxScrollPerFrame = ReorderAutoScrollMax,
+        dragCancelledAnimation = dragCancelledAnimation
     )
+    val isStoreReordering by remember(state) {
+        derivedStateOf { state.draggingItemIndex != null }
+    }
+    val isStoreGestureLocked = isStoreReordering || isStoreItemGestureLocked
+
+    LaunchedEffect(uiState.data.store) {
+        if (!isStoreReordering) {
+            localStore = uiState.data.store
+        }
+    }
+    LaunchedEffect(isStoreGestureLocked) {
+        onGestureLockChange(isStoreGestureLocked)
+    }
+    DisposableEffect(Unit) {
+        onDispose {
+            isStoreItemGestureLocked = false
+            onGestureLockChange(false)
+        }
+    }
 
     LazyColumn(
         state = state.listState,
-        userScrollEnabled = userScrollEnabled,
+        userScrollEnabled = userScrollEnabled && !isStoreGestureLocked,
         modifier = modifier
             .reorderable(state)
     ) {
@@ -1474,22 +1641,7 @@ private fun StorePage(
                 key = item.id,
                 defaultDraggingModifier = Modifier
             ) { isDragging ->
-                if (item.id == newTopStoreId) {
-                    StackInsertItem {
-                        StoreRow(
-                            item = item,
-                            coins = uiState.data.coins,
-                            palette = palette,
-                            isDragging = isDragging,
-                            modifier = Modifier
-                                .padding(horizontal = 16.dp, vertical = 2.dp)
-                                .detectReorderAfterLongPress(state),
-                            swipeEnabled = !isDragging,
-                            onBuyGesture = { onBuyGesture(item.id) },
-                            onEdit = { onEdit(item.id) }
-                        )
-                    }
-                } else {
+                AnimatedInsertedItem(animate = item.id == newTopStoreId) {
                     StoreRow(
                         item = item,
                         coins = uiState.data.coins,
@@ -1497,8 +1649,16 @@ private fun StorePage(
                         isDragging = isDragging,
                         modifier = Modifier
                             .padding(horizontal = 16.dp, vertical = 2.dp)
+                            .lockParentGestureOnLongPress {
+                                isStoreItemGestureLocked = it
+                            }
+                            .reorderLongPressFeedback(
+                                enabled = true,
+                                haptics = haptics
+                            )
                             .detectReorderAfterLongPress(state),
                         swipeEnabled = !isDragging,
+                        onGestureLockChange = { isStoreItemGestureLocked = it },
                         onBuyGesture = { onBuyGesture(item.id) },
                         onEdit = { onEdit(item.id) }
                     )
@@ -1521,6 +1681,7 @@ private fun HabitsGrid(
     finalMultiplier: Float,
     isJiggleMode: Boolean,
     modifier: Modifier = Modifier,
+    onGestureLockChange: (Boolean) -> Unit,
     onHabitsChange: (List<KudoTask>) -> Unit,
     onDragFinished: () -> Unit,
     onCompleteHabit: (Long) -> Unit,
@@ -1530,13 +1691,27 @@ private fun HabitsGrid(
     if (habits.isEmpty()) return
 
     val density = LocalDensity.current
+    val haptics = rememberKudoHaptics()
     val latestHabits by rememberUpdatedState(habits)
+    val latestOnGestureLockChange by rememberUpdatedState(onGestureLockChange)
     val latestOnHabitsChange by rememberUpdatedState(onHabitsChange)
     val latestOnDragFinished by rememberUpdatedState(onDragFinished)
 
     var draggingHabitId by remember { mutableStateOf<Long?>(null) }
     var draggingPosition by remember { mutableStateOf(Offset.Zero) }
     var dragChangedOrder by remember { mutableStateOf(false) }
+    var lastHabitSwapHapticAtMs by remember { mutableStateOf(0L) }
+
+    LaunchedEffect(isJiggleMode) {
+        if (!isJiggleMode) {
+            draggingHabitId = null
+            dragChangedOrder = false
+            lastHabitSwapHapticAtMs = 0L
+        }
+    }
+    DisposableEffect(Unit) {
+        onDispose { latestOnGestureLockChange(false) }
+    }
 
     BoxWithConstraints(
         modifier = modifier.fillMaxWidth()
@@ -1560,6 +1735,30 @@ private fun HabitsGrid(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(gridHeight)
+                .then(
+                    if (isJiggleMode) {
+                        Modifier.pointerInput(isJiggleMode) {
+                            awaitEachGesture {
+                                awaitFirstDown(
+                                    requireUnconsumed = false,
+                                    pass = PointerEventPass.Initial
+                                )
+                                latestOnGestureLockChange(true)
+                                try {
+                                    var hasPressedPointers = true
+                                    while (hasPressedPointers) {
+                                        val event = awaitPointerEvent(pass = PointerEventPass.Final)
+                                        hasPressedPointers = event.changes.any { it.pressed }
+                                    }
+                                } finally {
+                                    latestOnGestureLockChange(false)
+                                }
+                            }
+                        }
+                    } else {
+                        Modifier
+                    }
+                )
         ) {
             habits.forEachIndexed { index, habit ->
                 key(habit.id) {
@@ -1584,7 +1783,14 @@ private fun HabitsGrid(
                                 targetSlot.y.roundToInt()
                             )
                         },
-                        animationSpec = tween(durationMillis = if (isDragging) 0 else 220),
+                        animationSpec = if (isDragging) {
+                            tween(durationMillis = 0)
+                        } else {
+                            spring(
+                                dampingRatio = 0.84f,
+                                stiffness = 620f
+                            )
+                        },
                         label = "habitGridOffset"
                     )
 
@@ -1613,6 +1819,8 @@ private fun HabitsGrid(
                                                 draggingHabitId = habit.id
                                                 draggingPosition = targetSlot
                                                 dragChangedOrder = false
+                                                lastHabitSwapHapticAtMs = 0L
+                                                haptics.vibrate(HapticTickMs)
                                             },
                                             onDrag = { change, dragAmount ->
                                                 if (draggingHabitId != habit.id) return@detectDragGestures
@@ -1646,21 +1854,30 @@ private fun HabitsGrid(
                                                         )
                                                     )
                                                     dragChangedOrder = true
+                                                    lastHabitSwapHapticAtMs =
+                                                        maybeTriggerReorderSwapHaptic(
+                                                            haptics = haptics,
+                                                            lastHapticAtMs = lastHabitSwapHapticAtMs
+                                                        )
                                                 }
                                             },
                                             onDragEnd = {
                                                 draggingHabitId = null
                                                 if (dragChangedOrder) {
+                                                    haptics.vibrate(HapticConfirmMs)
                                                     latestOnDragFinished()
                                                 }
                                                 dragChangedOrder = false
+                                                lastHabitSwapHapticAtMs = 0L
                                             },
                                             onDragCancel = {
                                                 draggingHabitId = null
                                                 if (dragChangedOrder) {
+                                                    haptics.vibrate(HapticConfirmMs)
                                                     latestOnDragFinished()
                                                 }
                                                 dragChangedOrder = false
+                                                lastHabitSwapHapticAtMs = 0L
                                             }
                                         )
                                     }
@@ -1709,7 +1926,7 @@ private fun habitGridIndexForPosition(
     return (row * 2 + column).coerceIn(0, itemCount - 1)
 }
 
-private fun <T> moveListItem(
+internal fun <T> moveListItem(
     list: List<T>,
     fromIndex: Int,
     toIndex: Int
@@ -1720,6 +1937,90 @@ private fun <T> moveListItem(
 
     return list.toMutableList().apply {
         add(toIndex, removeAt(fromIndex))
+    }
+}
+
+private fun Modifier.reorderLongPressFeedback(
+    enabled: Boolean,
+    haptics: KudoHaptics
+): Modifier {
+    if (!enabled) return this
+
+    return pointerInput(haptics) {
+        awaitEachGesture {
+            val down = awaitFirstDown(
+                requireUnconsumed = false,
+                pass = PointerEventPass.Initial
+            )
+            val longPress = awaitLongPressOrCancellation(down.id)
+            if (longPress == null) {
+                return@awaitEachGesture
+            }
+
+            haptics.vibrate(HapticTickMs)
+        }
+    }
+}
+
+private fun Modifier.lockParentGestureOnLongPress(
+    onLockChange: (Boolean) -> Unit
+): Modifier {
+    return pointerInput(onLockChange) {
+        awaitEachGesture {
+            val down = awaitFirstDown(
+                requireUnconsumed = false,
+                pass = PointerEventPass.Initial
+            )
+            val longPress = awaitLongPressOrCancellation(down.id)
+            if (longPress == null) {
+                onLockChange(false)
+                return@awaitEachGesture
+            }
+
+            onLockChange(true)
+            try {
+                var hasPressedPointers = true
+                while (hasPressedPointers) {
+                    val event = awaitPointerEvent(pass = PointerEventPass.Final)
+                    hasPressedPointers = event.changes.any { it.pressed }
+                }
+            } finally {
+                onLockChange(false)
+            }
+        }
+    }
+}
+
+private fun maybeTriggerReorderSwapHaptic(
+    haptics: KudoHaptics,
+    lastHapticAtMs: Long,
+    nowMs: Long = SystemClock.elapsedRealtime()
+): Long {
+    if (nowMs - lastHapticAtMs < ReorderSwapHapticCooldownMs) {
+        return lastHapticAtMs
+    }
+
+    haptics.vibrate(ReorderSwapHapticMs)
+    return nowMs
+}
+
+private fun toggleId(ids: List<Long>, targetId: Long): List<Long> {
+    return if (targetId in ids) {
+        ids - targetId
+    } else {
+        ids + targetId
+    }
+}
+
+@Composable
+private fun AnimatedInsertedItem(
+    animate: Boolean,
+    content: @Composable () -> Unit
+) {
+    if (animate) {
+        StackInsertItem(content = content)
+    } else {
+        content()
     }
 }
 
@@ -1859,6 +2160,7 @@ private fun FocusInboxSwitcher(
     modifier: Modifier = Modifier,
     currentMode: String,
     palette: KudoPalette,
+    onGestureLockChange: (Boolean) -> Unit,
     onSetListMode: (String) -> Unit,
     onResetSortMode: (String) -> Unit
 ) {
@@ -1866,7 +2168,10 @@ private fun FocusInboxSwitcher(
     var trackWidthPx by remember { mutableFloatStateOf(1f) }
     val thumbOffsetProgress by animateFloatAsState(
         targetValue = if (focusSelected) 0f else 1f,
-        animationSpec = tween(durationMillis = 220),
+        animationSpec = spring(
+            dampingRatio = 0.88f,
+            stiffness = 720f
+        ),
         label = "switcherThumb"
     )
 
@@ -1901,63 +2206,166 @@ private fun FocusInboxSwitcher(
         Row(
             modifier = Modifier.fillMaxWidth()
         ) {
-            Box(
-                modifier = Modifier
-                    .weight(1f)
-                    .clip(RoundedCornerShape(10.dp))
-                    .background(if (focusSelected) palette.card else Color.Transparent)
-                    .combinedClickable(
-                        onClick = {
-                            if (!focusSelected) {
-                                onSetListMode(KudoState.LIST_FOCUS)
-                            }
-                        },
-                        onDoubleClick = {
-                            if (!focusSelected) {
-                                onSetListMode(KudoState.LIST_FOCUS)
-                            }
-                            onResetSortMode(KudoState.LIST_FOCUS)
-                        }
-                    )
-                    .padding(vertical = 8.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = "Focus",
-                    color = if (focusSelected) palette.textMain else palette.textSub,
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.SemiBold
-                )
-            }
-            Box(
-                modifier = Modifier
-                    .weight(1f)
-                    .clip(RoundedCornerShape(10.dp))
-                    .background(if (!focusSelected) palette.card else Color.Transparent)
-                    .combinedClickable(
-                        onClick = {
-                            if (focusSelected) {
-                                onSetListMode(KudoState.LIST_INBOX)
-                            }
-                        },
-                        onDoubleClick = {
-                            if (focusSelected) {
-                                onSetListMode(KudoState.LIST_INBOX)
-                            }
-                            onResetSortMode(KudoState.LIST_INBOX)
-                        }
-                    )
-                    .padding(vertical = 8.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = "Inbox",
-                    color = if (!focusSelected) palette.textMain else palette.textSub,
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.SemiBold
-                )
-            }
+            FocusInboxTab(
+                modifier = Modifier.weight(1f),
+                label = "Focus",
+                selected = focusSelected,
+                palette = palette,
+                onGestureLockChange = onGestureLockChange,
+                onClick = {
+                    if (!focusSelected) {
+                        onSetListMode(KudoState.LIST_FOCUS)
+                    }
+                },
+                onLongPress = {
+                    if (!focusSelected) {
+                        onSetListMode(KudoState.LIST_FOCUS)
+                    }
+                    onResetSortMode(KudoState.LIST_FOCUS)
+                }
+            )
+            FocusInboxTab(
+                modifier = Modifier.weight(1f),
+                label = "Inbox",
+                selected = !focusSelected,
+                palette = palette,
+                onGestureLockChange = onGestureLockChange,
+                onClick = {
+                    if (focusSelected) {
+                        onSetListMode(KudoState.LIST_INBOX)
+                    }
+                },
+                onLongPress = {
+                    if (focusSelected) {
+                        onSetListMode(KudoState.LIST_INBOX)
+                    }
+                    onResetSortMode(KudoState.LIST_INBOX)
+                }
+            )
         }
+    }
+}
+
+@Composable
+private fun FocusInboxTab(
+    modifier: Modifier = Modifier,
+    label: String,
+    selected: Boolean,
+    palette: KudoPalette,
+    onGestureLockChange: (Boolean) -> Unit,
+    onClick: () -> Unit,
+    onLongPress: () -> Unit
+) {
+    val scope = rememberCoroutineScope()
+    val haptics = rememberKudoHaptics()
+    val viewConfiguration = LocalViewConfiguration.current
+    val latestOnClick by rememberUpdatedState(onClick)
+    val latestOnLongPress by rememberUpdatedState(onLongPress)
+    val holdProgress = remember { Animatable(0f) }
+    val burstProgress = remember { Animatable(1f) }
+    var longPressTriggered by remember { mutableStateOf(false) }
+    val textColor by animateColorAsState(
+        targetValue = if (selected) palette.textMain else palette.textSub,
+        animationSpec = tween(durationMillis = 160),
+        label = "focusInboxTabText"
+    )
+    DisposableEffect(Unit) {
+        onDispose { onGestureLockChange(false) }
+    }
+
+    Box(
+        modifier = modifier
+            .clip(RoundedCornerShape(10.dp))
+            .pointerInput(label, selected) {
+                detectTapGestures(
+                    onPress = {
+                        longPressTriggered = false
+                        onGestureLockChange(true)
+                        val holdJob = scope.launch {
+                            holdProgress.snapTo(0f)
+                            holdProgress.animateTo(
+                                targetValue = 1f,
+                                animationSpec = tween(
+                                    durationMillis = viewConfiguration.longPressTimeoutMillis.toInt(),
+                                    easing = LinearEasing
+                                )
+                            )
+                        }
+                        try {
+                            tryAwaitRelease()
+                        } finally {
+                            onGestureLockChange(false)
+                            holdJob.cancel()
+                            if (!longPressTriggered) {
+                                scope.launch {
+                                    holdProgress.animateTo(
+                                        targetValue = 0f,
+                                        animationSpec = tween(durationMillis = 110)
+                                    )
+                                }
+                            }
+                        }
+                    },
+                    onTap = {
+                        latestOnClick()
+                    },
+                    onLongPress = {
+                        longPressTriggered = true
+                        haptics.vibrate(HapticTickMs)
+                        scope.launch {
+                            holdProgress.snapTo(0f)
+                            burstProgress.snapTo(0f)
+                            burstProgress.animateTo(
+                                targetValue = 1f,
+                                animationSpec = tween(
+                                    durationMillis = 420,
+                                    easing = CubicBezierEasing(0.2f, 0f, 0f, 1f)
+                                )
+                            )
+                        }
+                        latestOnLongPress()
+                    }
+                )
+            }
+            .clipToBounds()
+            .background(if (selected) palette.card else Color.Transparent)
+            .padding(vertical = 8.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        if (holdProgress.value > 0f) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .size(16.dp)
+                    .graphicsLayer {
+                        scaleX = 1f + holdProgress.value * 1.7f
+                        scaleY = 1f + holdProgress.value * 1.7f
+                        alpha = holdProgress.value * 0.14f
+                    }
+                    .clip(CircleShape)
+                    .background(if (selected) palette.textMain else palette.textSub)
+            )
+        }
+        if (burstProgress.value < 1f) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .size(18.dp)
+                    .graphicsLayer {
+                        scaleX = 1f + burstProgress.value * 4.6f
+                        scaleY = 1f + burstProgress.value * 4.6f
+                        alpha = (1f - burstProgress.value) * 0.24f
+                    }
+                    .clip(CircleShape)
+                    .background(if (selected) palette.textMain else palette.textSub)
+            )
+        }
+        Text(
+            text = label,
+            color = textColor,
+            fontSize = 13.sp,
+            fontWeight = FontWeight.SemiBold
+        )
     }
 }
 
@@ -2012,6 +2420,7 @@ private fun HabitChip(
 ) {
     val haptics = rememberKudoHaptics()
     val scope = rememberCoroutineScope()
+    val shape = RoundedCornerShape(16.dp)
     val jiggleRotation = rememberHabitJiggleRotation(isJiggleMode)
     val completedToday = remember(task.last) { isToday(task.last) }
     val value = remember(task.valAmount, finalMultiplier) {
@@ -2021,14 +2430,28 @@ private fun HabitChip(
     var chargeJob by remember(task.id) { mutableStateOf<Job?>(null) }
     val chargeProgress = remember(task.id) { Animatable(0f) }
     val dragScale by animateFloatAsState(
-        targetValue = if (isDragging) 1.03f else 1f,
-        animationSpec = tween(durationMillis = 140),
+        targetValue = if (isDragging) 1.035f else 1f,
+        animationSpec = spring(
+            dampingRatio = 0.82f,
+            stiffness = 760f
+        ),
         label = "habitDragScale"
     )
     val dragAlpha by animateFloatAsState(
-        targetValue = if (isDragging) 0.92f else 1f,
-        animationSpec = tween(durationMillis = 140),
+        targetValue = if (isDragging) 0.97f else 1f,
+        animationSpec = spring(
+            dampingRatio = 0.9f,
+            stiffness = 760f
+        ),
         label = "habitDragAlpha"
+    )
+    val dragShadow by animateDpAsState(
+        targetValue = if (isDragging) 14.dp else 0.dp,
+        animationSpec = spring(
+            dampingRatio = 0.84f,
+            stiffness = 760f
+        ),
+        label = "habitDragShadow"
     )
 
     fun cancelCharge(withReleaseHaptic: Boolean = true) {
@@ -2103,8 +2526,9 @@ private fun HabitChip(
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(16.dp))
-            .border(1.dp, palette.line, RoundedCornerShape(16.dp))
+            .shadow(dragShadow, shape, clip = false)
+            .clip(shape)
+            .border(1.dp, palette.line, shape)
             .zIndex(if (isDragging) 1f else 0f)
             .graphicsLayer {
                 rotationZ = if (isJiggleMode && !isDragging) jiggleRotation else 0f
@@ -2206,21 +2630,39 @@ private fun TaskRow(
     task: KudoTask,
     palette: KudoPalette,
     finalMultiplier: Float,
+    subtaskModeEnabled: Boolean,
     isDragging: Boolean = false,
+    expanded: Boolean = false,
     modifier: Modifier = Modifier,
+    reorderModifier: Modifier = Modifier,
     swipeEnabled: Boolean = true,
+    onGestureLockChange: (Boolean) -> Unit = {},
     onComplete: () -> Unit,
+    onCompleteSubtask: (Long) -> Unit,
     onMoveGesture: () -> Boolean,
+    onToggleExpanded: () -> Unit,
     onEdit: () -> Unit
 ) {
     val haptics = rememberKudoHaptics()
-    val reward = (task.valAmount * finalMultiplier).toInt()
+    val reward = (task.remainingValue * finalMultiplier).toInt()
     val canMoveTask = task.list != KudoState.LIST_INBOX || task.valAmount > 0
     val dueBadge = remember(task.dueEpochDay, palette) {
         task.dueEpochDay?.let { dueBadgeFor(it, palette) }
     }
+    val subtaskProgress = remember(task.subtasks, subtaskModeEnabled) {
+        if (subtaskModeEnabled && task.hasSubtasks) {
+            "${task.completedSubtaskCount}/${task.subtasks.size}"
+        } else {
+            null
+        }
+    }
+    val chevronRotation by animateFloatAsState(
+        targetValue = if (expanded) 180f else 0f,
+        label = "subtaskChevronRotation"
+    )
     SwipeActionCard(
         modifier = modifier,
+        reorderModifier = reorderModifier,
         palette = palette,
         lifted = isDragging,
         positiveAction = SwipeVisualAction(
@@ -2242,46 +2684,191 @@ private fun TaskRow(
         onNegativeDismissScale = 0.95f,
         onNegativeRejected = { onMoveGesture() },
         onTap = onEdit,
-        swipeEnabled = swipeEnabled
+        swipeEnabled = swipeEnabled,
+        onGestureLockChange = onGestureLockChange
     ) {
-        Row(
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .border(1.dp, palette.line, RoundedCornerShape(14.dp))
                 .padding(horizontal = 16.dp, vertical = 14.dp),
-            verticalAlignment = Alignment.CenterVertically
         ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = task.title,
-                    color = palette.textMain,
-                    fontSize = 15.sp,
-                    fontWeight = FontWeight.Medium,
-                    maxLines = 1
-                )
-                dueBadge?.let { badge ->
-                    Spacer(modifier = Modifier.height(3.dp))
+            Row(
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = badge.text,
-                        color = badge.color,
-                        fontSize = 11.sp,
+                        text = task.title,
+                        color = palette.textMain,
+                        fontSize = 15.sp,
                         fontWeight = FontWeight.Medium,
                         maxLines = 1
                     )
+                    dueBadge?.let { badge ->
+                        Spacer(modifier = Modifier.height(3.dp))
+                        Text(
+                            text = badge.text,
+                            color = badge.color,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Medium,
+                            maxLines = 1
+                        )
+                    }
+                }
+                Spacer(modifier = Modifier.width(14.dp))
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    subtaskProgress?.let { progress ->
+                        Row(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(999.dp))
+                                .background(palette.background)
+                                .border(1.dp, palette.line, RoundedCornerShape(999.dp))
+                                .clickable(
+                                    interactionSource = remember { MutableInteractionSource() },
+                                    indication = null,
+                                    onClick = onToggleExpanded
+                                )
+                                .padding(horizontal = 8.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Rounded.CheckCircle,
+                                contentDescription = null,
+                                tint = palette.textSub,
+                                modifier = Modifier.size(14.dp)
+                            )
+                            Text(
+                                text = progress,
+                                color = palette.textSub,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Icon(
+                                imageVector = Icons.Rounded.KeyboardArrowDown,
+                                contentDescription = if (expanded) {
+                                    "Collapse subtasks"
+                                } else {
+                                    "Expand subtasks"
+                                },
+                                tint = palette.textSub,
+                                modifier = Modifier
+                                    .size(14.dp)
+                                    .graphicsLayer { rotationZ = chevronRotation }
+                            )
+                        }
+                    }
+                    Text(
+                        text = "+${'$'}" + reward,
+                        color = palette.green,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(palette.greenBg)
+                            .padding(horizontal = 10.dp, vertical = 6.dp)
+                    )
                 }
             }
-            Spacer(modifier = Modifier.width(14.dp))
+            AnimatedVisibility(
+                visible = subtaskModeEnabled && expanded && task.hasSubtasks,
+                enter = fadeIn() + expandVertically(),
+                exit = fadeOut()
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 12.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Divider(color = palette.line)
+                    task.subtasks.forEach { subtask ->
+                        SubtaskRow(
+                            subtask = subtask,
+                            palette = palette,
+                            finalMultiplier = finalMultiplier,
+                            onComplete = {
+                                if (!subtask.isCompleted) {
+                                    haptics.vibrate(HapticTickMs)
+                                    onCompleteSubtask(subtask.id)
+                                }
+                            }
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SubtaskRow(
+    subtask: KudoSubtask,
+    palette: KudoPalette,
+    finalMultiplier: Float,
+    onComplete: () -> Unit
+) {
+    val reward = (subtask.valAmount * finalMultiplier).toInt()
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(palette.background)
+            .clickable(
+                enabled = !subtask.isCompleted,
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClick = onComplete
+            )
+            .padding(horizontal = 12.dp, vertical = 11.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            modifier = Modifier
+                .size(18.dp)
+                .clip(CircleShape)
+                .border(
+                    width = 1.dp,
+                    color = if (subtask.isCompleted) palette.green else palette.line,
+                    shape = CircleShape
+                )
+                .background(if (subtask.isCompleted) palette.greenBg else Color.Transparent),
+            contentAlignment = Alignment.Center
+        ) {
+            if (subtask.isCompleted) {
+                Icon(
+                    imageVector = Icons.Rounded.Check,
+                    contentDescription = null,
+                    tint = palette.green,
+                    modifier = Modifier.size(12.dp)
+                )
+            }
+        }
+        Spacer(modifier = Modifier.width(10.dp))
+        Column(modifier = Modifier.weight(1f)) {
             Text(
-                text = "+${'$'}" + reward,
-                color = palette.green,
+                text = subtask.title,
+                color = if (subtask.isCompleted) palette.textSub else palette.textMain,
                 fontSize = 13.sp,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(palette.greenBg)
-                    .padding(horizontal = 10.dp, vertical = 6.dp)
+                fontWeight = FontWeight.Medium,
+                textDecoration = if (subtask.isCompleted) TextDecoration.LineThrough else null
+            )
+            Text(
+                text = subtaskDifficultyLabel(subtask.difficulty),
+                color = palette.textSub,
+                fontSize = 10.sp,
+                fontWeight = FontWeight.Bold
             )
         }
+        Text(
+            text = "+${'$'}" + reward,
+            color = if (subtask.isCompleted) palette.textSub else palette.green,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.Bold
+        )
     }
 }
 
@@ -2292,13 +2879,16 @@ private fun StoreRow(
     palette: KudoPalette,
     isDragging: Boolean = false,
     modifier: Modifier = Modifier,
+    reorderModifier: Modifier = Modifier,
     swipeEnabled: Boolean = true,
+    onGestureLockChange: (Boolean) -> Unit = {},
     onBuyGesture: () -> Boolean,
     onEdit: () -> Unit
 ) {
     val canBuy = coins >= item.cost
     SwipeActionCard(
         modifier = modifier,
+        reorderModifier = reorderModifier,
         palette = palette,
         lifted = isDragging,
         positiveAction = SwipeVisualAction(
@@ -2317,6 +2907,7 @@ private fun StoreRow(
         onNegativeCommit = { onBuyGesture() },
         onTap = onEdit,
         swipeEnabled = swipeEnabled,
+        onGestureLockChange = onGestureLockChange,
         failureFlashColor = palette.red,
         alpha = if (coins >= item.cost) 1f else 0.55f
     ) {
@@ -2380,6 +2971,7 @@ private data class SwipeResolvedAction(
 @Composable
 private fun SwipeActionCard(
     modifier: Modifier = Modifier,
+    reorderModifier: Modifier = Modifier,
     palette: KudoPalette,
     lifted: Boolean = false,
     positiveAction: SwipeVisualAction,
@@ -2396,6 +2988,7 @@ private fun SwipeActionCard(
     onNegativeDismissScale: Float = 1f,
     onTap: () -> Unit,
     swipeEnabled: Boolean = true,
+    onGestureLockChange: (Boolean) -> Unit = {},
     onPositiveRejected: (() -> Unit)? = null,
     onNegativeRejected: (() -> Unit)? = null,
     failureFlashColor: Color? = null,
@@ -2423,18 +3016,27 @@ private fun SwipeActionCard(
         label = "swipeErrorShake"
     )
     val liftScale by animateFloatAsState(
-        targetValue = if (lifted) 1.02f else 1f,
-        animationSpec = tween(durationMillis = 140),
+        targetValue = if (lifted) 1.028f else 1f,
+        animationSpec = spring(
+            dampingRatio = 0.82f,
+            stiffness = 760f
+        ),
         label = "swipeLiftScale"
     )
     val liftAlpha by animateFloatAsState(
-        targetValue = if (lifted) 0.96f else 1f,
-        animationSpec = tween(durationMillis = 140),
+        targetValue = if (lifted) 0.98f else 1f,
+        animationSpec = spring(
+            dampingRatio = 0.92f,
+            stiffness = 760f
+        ),
         label = "swipeLiftAlpha"
     )
     val liftElevation by animateDpAsState(
-        targetValue = if (lifted) 12.dp else 0.dp,
-        animationSpec = tween(durationMillis = 140),
+        targetValue = if (lifted) 16.dp else 0.dp,
+        animationSpec = spring(
+            dampingRatio = 0.84f,
+            stiffness = 760f
+        ),
         label = "swipeLiftElevation"
     )
     val errorFlashProgress by animateFloatAsState(
@@ -2466,6 +3068,15 @@ private fun SwipeActionCard(
         animatedOffsetX > 30f -> positiveAction
         animatedOffsetX < -30f -> negativeAction
         else -> null
+    }
+
+    LaunchedEffect(swipeEnabled) {
+        if (!swipeEnabled) {
+            onGestureLockChange(false)
+        }
+    }
+    DisposableEffect(Unit) {
+        onDispose { onGestureLockChange(false) }
     }
 
     Box(
@@ -2503,17 +3114,20 @@ private fun SwipeActionCard(
                     scaleY = liftScale * dismissScale
                     this.alpha = liftAlpha * dismissAlpha
                 }
+                .then(reorderModifier)
                 .then(
                     if (swipeEnabled) {
                         Modifier.draggable(
                             orientation = Orientation.Horizontal,
                             state = rememberDraggableState { delta ->
+                                onGestureLockChange(true)
                                 isDragging = true
                                 dismissAlphaTarget = 1f
                                 rawOffsetX = (rawOffsetX + delta).coerceIn(-widthPx, widthPx)
                             },
                             onDragStopped = {
                                 scope.launch {
+                                    onGestureLockChange(false)
                                     isDragging = false
                                     val threshold = widthPx * 0.28f
                                     val action = when {
@@ -2584,7 +3198,10 @@ private fun SwipeActionCard(
                         Modifier
                     }
                 )
-                .clickable { onTap() },
+                .clickable(
+                    enabled = !lifted && !isDragging,
+                    onClick = onTap
+                ),
             colors = CardDefaults.cardColors(containerColor = animatedCardColor),
             elevation = CardDefaults.cardElevation(defaultElevation = liftElevation),
             shape = RoundedCornerShape(14.dp)
@@ -2855,6 +3472,7 @@ private fun SettingsSheet(
     onDismiss: () -> Unit,
     onToggleHelp: () -> Unit,
     onSetTheme: (String) -> Unit,
+    onSetSubtaskModeEnabled: (Boolean) -> Unit,
     onExport: () -> Unit,
     onImport: () -> Unit
 ) {
@@ -2958,6 +3576,18 @@ private fun SettingsSheet(
                     )
                 }
 
+                Spacer(modifier = Modifier.height(16.dp))
+
+                SettingsToggleRow(
+                    title = "Subtask Mode",
+                    subtitle = "Enable partial coin rewards for larger tasks.",
+                    enabled = uiState.isSubtaskModeEnabled,
+                    palette = palette,
+                    onToggle = {
+                        onSetSubtaskModeEnabled(!uiState.isSubtaskModeEnabled)
+                    }
+                )
+
                 Spacer(modifier = Modifier.height(20.dp))
 
                 ActionRow(
@@ -3002,26 +3632,36 @@ private fun DashboardTextField(
     keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
     textAlign: TextAlign = TextAlign.Start
 ) {
+    val fieldTextStyle = TextStyle.Default.copy(
+        color = textColor,
+        fontSize = 16.sp,
+        lineHeight = 21.sp,
+        fontWeight = FontWeight.Normal,
+        textAlign = textAlign,
+        platformStyle = PlatformTextStyle(includeFontPadding = true)
+    )
     BasicTextField(
         value = value,
         onValueChange = onValueChange,
         modifier = modifier,
         singleLine = true,
-        textStyle = TextStyle.Default.copy(
-            color = textColor,
-            fontSize = 16.sp,
-            fontWeight = FontWeight.Normal,
-            textAlign = textAlign
-        ),
+        textStyle = fieldTextStyle,
         cursorBrush = SolidColor(textColor),
         keyboardOptions = keyboardOptions,
         decorationBox = { innerTextField ->
-            Box(modifier = Modifier.fillMaxWidth()) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clipToBounds()
+                    .padding(vertical = 2.dp),
+                contentAlignment = Alignment.CenterStart
+            ) {
                 if (value.isEmpty()) {
                     Text(
                         text = placeholder,
                         color = placeholderColor,
                         fontSize = 16.sp,
+                        lineHeight = 21.sp,
                         fontWeight = FontWeight.Normal
                     )
                 }
@@ -3114,6 +3754,58 @@ private fun ThemeModeChip(
 }
 
 @Composable
+private fun SettingsToggleRow(
+    title: String,
+    subtitle: String,
+    enabled: Boolean,
+    palette: KudoPalette,
+    onToggle: () -> Unit
+) {
+    val haptics = rememberKudoHaptics()
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(palette.background)
+            .border(1.dp, palette.line, RoundedCornerShape(12.dp))
+            .clickable {
+                haptics.vibrate(HapticTickMs)
+                onToggle()
+            }
+            .padding(horizontal = 16.dp, vertical = 14.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = title,
+                color = palette.textMain,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Medium
+            )
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                text = subtitle,
+                color = palette.textSub,
+                fontSize = 12.sp
+            )
+        }
+        Spacer(modifier = Modifier.width(12.dp))
+        Text(
+            text = if (enabled) "ON" else "OFF",
+            color = if (enabled) palette.green else palette.textSub,
+            fontSize = 11.sp,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier
+                .clip(RoundedCornerShape(999.dp))
+                .background(if (enabled) palette.greenBg else palette.card)
+                .border(1.dp, palette.line, RoundedCornerShape(999.dp))
+                .padding(horizontal = 10.dp, vertical = 6.dp)
+        )
+    }
+}
+
+@Composable
 private fun ActionRow(
     title: String,
     palette: KudoPalette,
@@ -3170,13 +3862,13 @@ private fun HelpContent(
         )
         Text(text = "📌 任务分类", color = palette.textMain, fontWeight = FontWeight.Bold)
         Text(
-            text = "Habits：重复进行的日常项。\nTasks：一次性事项，分为 Focus 与 Inbox。",
+            text = "Habits：重复进行的日常项。\nTasks：一次性事项，分为 Focus 与 Inbox。\n子任务模式可在 Settings 中单独开启。",
             color = palette.textSub,
             fontSize = 13.sp
         )
         Text(text = "🖐️ 手势操作", color = palette.textMain, fontWeight = FontWeight.Bold)
         Text(
-            text = "顶部：在页面顶部下划展开添加面板，提交后会自动收起。\nHabits：点击充能，长按进入编辑 / 排序 / 删除模式。\nTasks：右滑完成，左滑流转，点击编辑可设置截止日，长按排序；双击 Focus / Inbox 可恢复按日期排序。\nStore：滑动消费金币，点击编辑奖励内容，长按排序。",
+            text = "顶部：在页面顶部下划展开添加面板，提交后会自动收起。\nHabits：点击充能，长按进入编辑 / 排序 / 删除模式。\nTasks：右滑完成，左滑流转，点击编辑可设置截止日；如果在 Settings 开启子任务模式，还可添加子任务并按 S / M / L 自动切分金币；长按排序，长按 Focus / Inbox 标签可恢复默认日期排序。\nStore：滑动消费金币，点击编辑奖励内容，长按排序。",
             color = palette.textSub,
             fontSize = 13.sp
         )
@@ -3195,11 +3887,12 @@ private fun CompactEditLabel(
     palette: KudoPalette
 ) {
     Text(
-        text = text,
+        text = text.uppercase(Locale.US),
         color = palette.textSub,
-        fontSize = 11.sp,
+        fontSize = 10.sp,
         fontWeight = FontWeight.Bold,
-        modifier = Modifier.padding(start = 4.dp, bottom = 6.dp)
+        letterSpacing = 0.5.sp,
+        modifier = Modifier.padding(start = 4.dp, bottom = 8.dp)
     )
 }
 
@@ -3210,14 +3903,22 @@ private fun EditSheet(
     palette: KudoPalette,
     target: EditingTarget,
     onDismiss: () -> Unit,
-    onSave: (String, String, Long?) -> Unit,
+    onSave: (String, String, Long?, List<KudoSubtaskDraft>?) -> Unit,
     onDelete: () -> Unit
 ) {
+    val configuration = LocalConfiguration.current
     val context = LocalContext.current
     val targetTask = uiState.data.tasks.firstOrNull { it.id == target.id }
     val targetStore = uiState.data.store.firstOrNull { it.id == target.id }
     val isPendingMove = uiState.pendingMoveTaskId != null
     val isTaskEditor = target.kind == KudoViewModel.KIND_TASK && targetTask != null
+    val isSubtaskModeEnabled = uiState.isSubtaskModeEnabled
+    val isSubtaskLocked = targetTask?.isSubtaskStructureLocked == true
+    val hasStableSubtaskViewport = isTaskEditor && isSubtaskModeEnabled
+    val stableSheetViewportHeight = remember(configuration.screenHeightDp) {
+        (configuration.screenHeightDp.dp * 0.72f).coerceAtMost(560.dp)
+    }
+    val scrollState = rememberScrollState()
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
     var title by remember(target.id, isPendingMove) {
@@ -3236,6 +3937,19 @@ private fun EditSheet(
     var dueEpochDay by remember(target.id, isPendingMove, targetTask?.dueEpochDay) {
         mutableStateOf(targetTask?.dueEpochDay)
     }
+    var subtaskDrafts by remember(target.id, isPendingMove, targetTask?.subtasks) {
+        mutableStateOf(
+            targetTask?.subtasks?.map { subtask ->
+                KudoSubtaskDraft(
+                    title = subtask.title,
+                    difficulty = subtask.difficulty
+                )
+            } ?: emptyList()
+        )
+    }
+    var newSubtaskTitle by remember(target.id, isPendingMove) {
+        mutableStateOf("")
+    }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -3245,6 +3959,16 @@ private fun EditSheet(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                .then(
+                    if (hasStableSubtaskViewport) {
+                        Modifier.height(stableSheetViewportHeight)
+                    } else {
+                        Modifier
+                    }
+                )
+                .navigationBarsPadding()
+                .imePadding()
+                .verticalScroll(scrollState)
                 .padding(horizontal = 20.dp, vertical = 8.dp)
         ) {
             Text(
@@ -3257,24 +3981,30 @@ private fun EditSheet(
             TextField(
                 value = title,
                 onValueChange = { title = it },
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .defaultMinSize(minHeight = EditFieldMinHeight),
                 placeholder = { Text("Title", color = palette.textSub) },
                 colors = textFieldColors(palette),
+                shape = EditControlShape,
                 singleLine = true
             )
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(14.dp))
             if (isTaskEditor) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
                     verticalAlignment = Alignment.Top
                 ) {
-                    Column(modifier = Modifier.weight(0.88f)) {
+                    Column(modifier = Modifier.weight(1f)) {
                         CompactEditLabel(text = "Value", palette = palette)
                         TextField(
                             value = value,
                             onValueChange = { value = it.filter(Char::isDigit) },
-                            modifier = Modifier.fillMaxWidth(),
+                            enabled = !(isSubtaskModeEnabled && isSubtaskLocked),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .defaultMinSize(minHeight = EditFieldMinHeight),
                             placeholder = {
                                 Text(
                                     text = if (isPendingMove) "Set for Focus" else "0",
@@ -3283,17 +4013,19 @@ private fun EditSheet(
                             },
                             colors = textFieldColors(palette),
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            shape = EditControlShape,
                             singleLine = true
                         )
                     }
-                    Column(modifier = Modifier.weight(1.12f)) {
+                    Column(modifier = Modifier.weight(1f)) {
                         CompactEditLabel(text = "Deadline", palette = palette)
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .clip(RoundedCornerShape(14.dp))
+                                .defaultMinSize(minHeight = EditFieldMinHeight)
+                                .clip(EditControlShape)
                                 .background(palette.background)
-                                .border(1.dp, palette.line, RoundedCornerShape(14.dp))
+                                .border(1.dp, palette.line, EditControlShape)
                                 .clickable {
                                     val initialDate = dueEpochDay
                                         ?.let(LocalDate::ofEpochDay)
@@ -3308,7 +4040,7 @@ private fun EditSheet(
                                         initialDate.dayOfMonth
                                     ).show()
                                 }
-                                .padding(horizontal = 14.dp, vertical = 14.dp)
+                                .padding(horizontal = 15.dp, vertical = 14.dp)
                         ) {
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
@@ -3335,12 +4067,112 @@ private fun EditSheet(
                         }
                     }
                 }
+                if (isSubtaskModeEnabled) {
+                    Spacer(modifier = Modifier.height(18.dp))
+                    CompactEditLabel(text = "Subtasks", palette = palette)
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(18.dp))
+                            .background(palette.background)
+                            .border(1.dp, palette.line, RoundedCornerShape(18.dp))
+                            .padding(14.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        if (subtaskDrafts.isEmpty()) {
+                            Text(
+                                text = "Add subtasks only when you want partial rewards.",
+                                color = palette.textSub,
+                                fontSize = 12.sp
+                            )
+                        } else {
+                            subtaskDrafts.forEachIndexed { index, draft ->
+                                val existingSubtask = targetTask?.subtasks?.getOrNull(index)
+                                SubtaskEditorRow(
+                                    title = draft.title,
+                                    difficulty = draft.difficulty,
+                                    completed = existingSubtask?.isCompleted == true,
+                                    palette = palette,
+                                    locked = isSubtaskLocked,
+                                    onCycleDifficulty = {
+                                        if (!isSubtaskLocked) {
+                                            subtaskDrafts = subtaskDrafts.toMutableList().apply {
+                                                this[index] = draft.copy(
+                                                    difficulty = nextSubtaskDifficulty(draft.difficulty)
+                                                )
+                                            }
+                                        }
+                                    },
+                                    onRemove = {
+                                        if (!isSubtaskLocked) {
+                                            subtaskDrafts = subtaskDrafts.filterIndexed { itemIndex, _ ->
+                                                itemIndex != index
+                                            }
+                                        }
+                                    }
+                                )
+                            }
+                        }
+                        if (!isSubtaskLocked) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                TextField(
+                                    value = newSubtaskTitle,
+                                    onValueChange = { newSubtaskTitle = it },
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .defaultMinSize(minHeight = EditFieldMinHeight),
+                                    placeholder = { Text("Add subtask", color = palette.textSub) },
+                                    colors = textFieldColors(palette),
+                                    shape = EditControlShape,
+                                    singleLine = true
+                                )
+                                TextButton(
+                                    onClick = {
+                                        val trimmed = newSubtaskTitle.trim()
+                                        if (trimmed.isNotBlank()) {
+                                            subtaskDrafts = subtaskDrafts + KudoSubtaskDraft(title = trimmed)
+                                            newSubtaskTitle = ""
+                                        }
+                                    },
+                                    modifier = Modifier
+                                        .defaultMinSize(minHeight = EditFieldMinHeight)
+                                        .clip(EditControlShape)
+                                        .background(palette.card)
+                                        .border(1.dp, palette.line, EditControlShape)
+                                ) {
+                                    Text(
+                                        "Add",
+                                        color = palette.textMain,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                }
+                            }
+                            Text(
+                                text = "S / M / L changes each subtask's share. Total reward stays fixed.",
+                                color = palette.textSub,
+                                fontSize = 11.sp
+                            )
+                        } else {
+                            Text(
+                                text = "Reward split locks after the first subtask is checked.",
+                                color = palette.textSub,
+                                fontSize = 11.sp
+                            )
+                        }
+                    }
+                }
             } else {
                 CompactEditLabel(text = "Value", palette = palette)
                 TextField(
                     value = value,
                     onValueChange = { value = it.filter(Char::isDigit) },
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .defaultMinSize(minHeight = EditFieldMinHeight),
                     placeholder = {
                         Text(
                             text = if (isPendingMove) "Set value for Focus" else "0",
@@ -3349,10 +4181,11 @@ private fun EditSheet(
                     },
                     colors = textFieldColors(palette),
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    shape = EditControlShape,
                     singleLine = true
                 )
             }
-            Spacer(modifier = Modifier.height(18.dp))
+            Spacer(modifier = Modifier.height(20.dp))
             Row(
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
@@ -3360,8 +4193,10 @@ private fun EditSheet(
                     onClick = onDelete,
                     modifier = Modifier
                         .weight(1f)
-                        .clip(RoundedCornerShape(12.dp))
+                        .defaultMinSize(minHeight = EditButtonHeight)
+                        .clip(EditControlShape)
                         .background(palette.background)
+                        .border(1.dp, palette.orange.copy(alpha = 0.22f), EditControlShape)
                 ) {
                     Icon(
                         imageVector = Icons.Rounded.DeleteOutline,
@@ -3372,17 +4207,121 @@ private fun EditSheet(
                     Text(text = "Delete", color = palette.orange)
                 }
                 TextButton(
-                    onClick = { onSave(title, value, dueEpochDay) },
+                    onClick = {
+                        onSave(
+                            title,
+                            value,
+                            dueEpochDay,
+                            subtaskDrafts.takeIf { isTaskEditor && isSubtaskModeEnabled }
+                        )
+                    },
                     modifier = Modifier
-                        .weight(2f)
-                        .clip(RoundedCornerShape(12.dp))
+                        .weight(1f)
+                        .defaultMinSize(minHeight = EditButtonHeight)
+                        .clip(EditControlShape)
                         .background(palette.textMain)
                 ) {
-                    Text(text = "Save", color = palette.background)
+                    Text(
+                        text = "Save",
+                        color = palette.background,
+                        fontWeight = FontWeight.SemiBold
+                    )
                 }
             }
-            Spacer(modifier = Modifier.height(24.dp))
+            Spacer(modifier = Modifier.height(28.dp))
         }
+    }
+}
+
+@Composable
+private fun SubtaskEditorRow(
+    title: String,
+    difficulty: Int,
+    completed: Boolean,
+    palette: KudoPalette,
+    locked: Boolean,
+    onCycleDifficulty: () -> Unit,
+    onRemove: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(EditControlShape)
+            .background(palette.card)
+            .border(1.dp, palette.line, EditControlShape)
+            .padding(horizontal = 14.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = title,
+                color = if (completed) palette.textSub else palette.textMain,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Medium,
+                textDecoration = if (completed) TextDecoration.LineThrough else null,
+                maxLines = 1
+            )
+        }
+        DifficultyChip(
+            difficulty = difficulty,
+            palette = palette,
+            enabled = !locked,
+            onClick = onCycleDifficulty
+        )
+        if (!locked) {
+            Spacer(modifier = Modifier.width(8.dp))
+            Box(
+                modifier = Modifier
+                    .size(EditChipSize)
+                    .clip(CircleShape)
+                    .background(palette.background)
+                    .border(1.dp, palette.line, CircleShape)
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                        onClick = onRemove
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.DeleteOutline,
+                    contentDescription = "Remove subtask",
+                    tint = palette.orange,
+                    modifier = Modifier.size(16.dp)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun DifficultyChip(
+    difficulty: Int,
+    palette: KudoPalette,
+    enabled: Boolean,
+    onClick: () -> Unit
+) {
+    val label = subtaskDifficultyLabel(difficulty)
+    Box(
+        modifier = Modifier
+            .size(EditChipSize)
+            .clip(CircleShape)
+            .background(if (enabled) palette.background else palette.card)
+            .border(1.dp, palette.line, CircleShape)
+            .clickable(
+                enabled = enabled,
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClick = onClick
+            ),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = label,
+            color = if (enabled) palette.textMain else palette.textSub,
+            fontSize = 11.sp,
+            fontWeight = FontWeight.Bold
+        )
     }
 }
 
@@ -3404,15 +4343,16 @@ private fun EmptyState(
 
 @Composable
 private fun textFieldColors(palette: KudoPalette) = TextFieldDefaults.colors(
-    focusedContainerColor = Color.Transparent,
-    unfocusedContainerColor = Color.Transparent,
-    disabledContainerColor = Color.Transparent,
+    focusedContainerColor = palette.background,
+    unfocusedContainerColor = palette.background,
+    disabledContainerColor = palette.background,
     focusedIndicatorColor = Color.Transparent,
     unfocusedIndicatorColor = Color.Transparent,
     disabledIndicatorColor = Color.Transparent,
     cursorColor = palette.textMain,
     focusedTextColor = palette.textMain,
-    unfocusedTextColor = palette.textMain
+    unfocusedTextColor = palette.textMain,
+    disabledTextColor = palette.textSub
 )
 
 private fun xpProgress(state: KudoState): Float {
@@ -3450,6 +4390,22 @@ private fun sortTasksForDisplay(
                 { it.dueEpochDay ?: Long.MAX_VALUE }
             )
         )
+    }
+}
+
+private fun subtaskDifficultyLabel(difficulty: Int): String {
+    return when (difficulty) {
+        KudoSubtask.DIFFICULTY_SMALL -> "S"
+        KudoSubtask.DIFFICULTY_LARGE -> "L"
+        else -> "M"
+    }
+}
+
+private fun nextSubtaskDifficulty(difficulty: Int): Int {
+    return when (difficulty) {
+        KudoSubtask.DIFFICULTY_SMALL -> KudoSubtask.DIFFICULTY_MEDIUM
+        KudoSubtask.DIFFICULTY_MEDIUM -> KudoSubtask.DIFFICULTY_LARGE
+        else -> KudoSubtask.DIFFICULTY_SMALL
     }
 }
 

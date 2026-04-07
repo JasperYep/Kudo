@@ -2,6 +2,7 @@ package com.kudo.app.core.repository
 
 import android.content.Context
 import android.net.Uri
+import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
@@ -26,14 +27,16 @@ class KudoStateRepository(
 
     private data class Snapshot(
         val state: KudoState,
-        val theme: String
+        val theme: String,
+        val isSubtaskModeEnabled: Boolean
     )
 
     private val snapshot: StateFlow<Snapshot> = context.dataStore.data
         .map { preferences ->
             Snapshot(
                 state = KudoStateJson.decode(preferences[Keys.STATE_JSON]),
-                theme = preferences[Keys.THEME_MODE] ?: THEME_SYSTEM
+                theme = preferences[Keys.THEME_MODE] ?: THEME_SYSTEM,
+                isSubtaskModeEnabled = preferences[Keys.SUBTASK_MODE_ENABLED] ?: false
             )
         }
         .flowOn(Dispatchers.Default)
@@ -42,7 +45,8 @@ class KudoStateRepository(
             started = SharingStarted.Eagerly,
             initialValue = Snapshot(
                 state = KudoState(),
-                theme = THEME_SYSTEM
+                theme = THEME_SYSTEM,
+                isSubtaskModeEnabled = false
             )
         )
 
@@ -52,6 +56,10 @@ class KudoStateRepository(
 
     val theme: Flow<String> = snapshot
         .map { it.theme }
+        .distinctUntilChanged()
+
+    val isSubtaskModeEnabled: Flow<Boolean> = snapshot
+        .map { it.isSubtaskModeEnabled }
         .distinctUntilChanged()
 
     suspend fun getState(): KudoState {
@@ -116,6 +124,12 @@ class KudoStateRepository(
         }
     }
 
+    suspend fun setSubtaskModeEnabled(enabled: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[Keys.SUBTASK_MODE_ENABLED] = enabled
+        }
+    }
+
     companion object {
         private val Context.dataStore by preferencesDataStore(name = "kudo_state")
 
@@ -126,6 +140,7 @@ class KudoStateRepository(
         private object Keys {
             val STATE_JSON = stringPreferencesKey("state_json")
             val THEME_MODE = stringPreferencesKey("theme_mode")
+            val SUBTASK_MODE_ENABLED = booleanPreferencesKey("subtask_mode_enabled")
         }
     }
 }

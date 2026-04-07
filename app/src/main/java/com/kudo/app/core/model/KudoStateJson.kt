@@ -60,6 +60,9 @@ object KudoStateJson {
                     .put("order", task.order)
                     .apply {
                         task.dueEpochDay?.let { put("due", it) }
+                        if (task.subtasks.isNotEmpty()) {
+                            put("subs", task.subtasks.toJsonArray())
+                        }
                     }
             )
         }
@@ -85,7 +88,9 @@ object KudoStateJson {
                 .put("v", log.value)
                 .put("type", log.type)
 
+            log.baseValue?.let { json.put("base", it) }
             log.taskId?.let { json.put("taskId", it) }
+            log.subtaskId?.let { json.put("subtaskId", it) }
             if (log.isHabit) json.put("isHabit", true)
             log.itemData?.let { item ->
                 json.put(
@@ -102,6 +107,9 @@ object KudoStateJson {
                             put("list", item.list)
                             put("order", item.order)
                             item.dueEpochDay?.let { put("due", it) }
+                            if (item.subtasks.isNotEmpty()) {
+                                put("subs", item.subtasks.toJsonArray())
+                            }
                         }
                 )
             }
@@ -123,6 +131,15 @@ object KudoStateJson {
                     KudoState.LIST_FOCUS,
                     KudoState.LIST_INBOX -> task.list
                     else -> KudoState.LIST_FOCUS
+                },
+                subtasks = if (task.type == KudoState.TYPE_HABIT) {
+                    emptyList()
+                } else {
+                    task.subtasks.map { subtask ->
+                        subtask.copy(
+                            difficulty = sanitizeSubtaskDifficulty(subtask.difficulty)
+                        )
+                    }
                 }
             )
         }
@@ -164,7 +181,8 @@ object KudoStateJson {
                         last = json.optLong("last", 0L),
                         list = json.optString("list", KudoState.LIST_FOCUS),
                         order = json.optLong("order", id),
-                        dueEpochDay = if (json.has("due")) json.optLong("due") else null
+                        dueEpochDay = if (json.has("due")) json.optLong("due") else null,
+                        subtasks = json.optJSONArray("subs").toSubtaskList()
                     )
                 )
             }
@@ -199,8 +217,10 @@ object KudoStateJson {
                         timestamp = json.optLong("t", 0L),
                         text = json.optString("txt", ""),
                         value = json.optInt("v", 0),
+                        baseValue = if (json.has("base")) json.optInt("base", 0) else null,
                         type = json.optString("type", ""),
                         taskId = if (json.has("taskId")) json.optLong("taskId") else null,
+                        subtaskId = if (json.has("subtaskId")) json.optLong("subtaskId") else null,
                         isHabit = json.optBoolean("isHabit", false),
                         itemData = itemJson?.let {
                             val id = it.optLong("id", 0L)
@@ -214,10 +234,53 @@ object KudoStateJson {
                                 last = it.optLong("last", 0L),
                                 list = it.optString("list", KudoState.LIST_FOCUS),
                                 order = it.optLong("order", id),
-                                dueEpochDay = if (it.has("due")) it.optLong("due") else null
+                                dueEpochDay = if (it.has("due")) it.optLong("due") else null,
+                                subtasks = it.optJSONArray("subs").toSubtaskList()
                             )
                         }
                     )
+                )
+            }
+        }
+    }
+
+    private fun JSONArray?.toSubtaskList(): List<KudoSubtask> {
+        if (this == null) return emptyList()
+        return buildList(length()) {
+            for (index in 0 until length()) {
+                val json = optJSONObject(index) ?: continue
+                val id = json.optLong("id", System.currentTimeMillis() + index)
+                add(
+                    KudoSubtask(
+                        id = id,
+                        title = json.optString("title", ""),
+                        valAmount = json.optInt("val", 0),
+                        difficulty = sanitizeSubtaskDifficulty(
+                            json.optInt("difficulty", KudoSubtask.DIFFICULTY_MEDIUM)
+                        ),
+                        completedAt = if (json.has("completedAt")) {
+                            json.optLong("completedAt")
+                        } else {
+                            null
+                        }
+                    )
+                )
+            }
+        }
+    }
+
+    private fun List<KudoSubtask>.toJsonArray(): JSONArray {
+        return JSONArray().apply {
+            this@toJsonArray.forEach { subtask ->
+                put(
+                    JSONObject()
+                        .put("id", subtask.id)
+                        .put("title", subtask.title)
+                        .put("val", subtask.valAmount)
+                        .put("difficulty", sanitizeSubtaskDifficulty(subtask.difficulty))
+                        .apply {
+                            subtask.completedAt?.let { put("completedAt", it) }
+                        }
                 )
             }
         }
@@ -228,6 +291,15 @@ object KudoStateJson {
             KudoState.TASK_SORT_AUTO_DUE,
             KudoState.TASK_SORT_MANUAL -> mode
             else -> KudoState.TASK_SORT_AUTO_DUE
+        }
+    }
+
+    private fun sanitizeSubtaskDifficulty(difficulty: Int): Int {
+        return when (difficulty) {
+            KudoSubtask.DIFFICULTY_SMALL,
+            KudoSubtask.DIFFICULTY_MEDIUM,
+            KudoSubtask.DIFFICULTY_LARGE -> difficulty
+            else -> KudoSubtask.DIFFICULTY_MEDIUM
         }
     }
 }

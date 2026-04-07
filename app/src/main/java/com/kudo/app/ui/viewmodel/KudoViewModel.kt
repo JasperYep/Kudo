@@ -8,6 +8,7 @@ import androidx.lifecycle.viewModelScope
 import com.kudo.app.KudoApplication
 import com.kudo.app.core.model.KudoReducer
 import com.kudo.app.core.model.KudoState
+import com.kudo.app.core.model.KudoSubtaskDraft
 import com.kudo.app.core.repository.KudoStateRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -46,6 +47,7 @@ class KudoViewModel(application: Application) : AndroidViewModel(application) {
     val uiState: StateFlow<KudoUiState> = combine(
         repository.state,
         repository.theme,
+        repository.isSubtaskModeEnabled,
         currentView,
         taskCreationTarget,
         storeMode,
@@ -63,17 +65,18 @@ class KudoViewModel(application: Application) : AndroidViewModel(application) {
         KudoUiState(
             data = state,
             theme = theme,
-            currentView = values[2] as String,
-            taskCreationTarget = values[3] as TaskCreationTarget,
-            storeMode = values[4] as Int,
-            habitsCollapsed = values[5] as Boolean,
-            isHabitJiggleMode = values[6] as Boolean,
-            isSettingsVisible = values[7] as Boolean,
-            isHelpVisible = values[8] as Boolean,
-            editingTarget = values[9] as EditingTarget?,
-            pendingMoveTaskId = values[10] as Long?,
-            recentTaskInsertId = values[11] as Long?,
-            recentStoreInsertId = values[12] as Long?
+            isSubtaskModeEnabled = values[2] as Boolean,
+            currentView = values[3] as String,
+            taskCreationTarget = values[4] as TaskCreationTarget,
+            storeMode = values[5] as Int,
+            habitsCollapsed = values[6] as Boolean,
+            isHabitJiggleMode = values[7] as Boolean,
+            isSettingsVisible = values[8] as Boolean,
+            isHelpVisible = values[9] as Boolean,
+            editingTarget = values[10] as EditingTarget?,
+            pendingMoveTaskId = values[11] as Long?,
+            recentTaskInsertId = values[12] as Long?,
+            recentStoreInsertId = values[13] as Long?
         )
     }.stateIn(
         scope = viewModelScope,
@@ -212,6 +215,12 @@ class KudoViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun completeSubtask(taskId: Long, subtaskId: Long) {
+        viewModelScope.launch {
+            repository.updateState { state -> KudoReducer.completeSubtask(state, taskId, subtaskId) }
+        }
+    }
+
     fun moveTask(id: Long) {
         val current = uiState.value.data
         val result = KudoReducer.moveTask(current, id)
@@ -279,11 +288,28 @@ class KudoViewModel(application: Application) : AndroidViewModel(application) {
         pendingMoveTaskId.value = null
     }
 
-    fun saveEditing(title: String, valueInput: String, dueEpochDay: Long?) {
+    fun saveEditing(
+        title: String,
+        valueInput: String,
+        dueEpochDay: Long?,
+        subtaskDrafts: List<KudoSubtaskDraft>?
+    ) {
         val target = editingTarget.value ?: return
         val pendingTaskId = pendingMoveTaskId.value
         val sanitizedTitle = title.trim()
         val parsedValue = parseEditValue(valueInput)
+        val sanitizedSubtasks = subtaskDrafts?.mapNotNull { draft ->
+            val trimmedTitle = draft.title.trim()
+            if (trimmedTitle.isBlank()) {
+                null
+            } else {
+                KudoSubtaskDraft(
+                    title = trimmedTitle,
+                    difficulty = draft.difficulty
+                )
+            }
+        }
+        val editTimestamp = System.currentTimeMillis()
 
         viewModelScope.launch {
             repository.updateState { state ->
@@ -293,23 +319,27 @@ class KudoViewModel(application: Application) : AndroidViewModel(application) {
                     val updatedValue = if (valueInput.isBlank()) 10 else parsedValue
                     KudoReducer.moveTask(
                         state = KudoReducer.updateTask(
-                        state = state,
+                            state = state,
+                            id = pendingTaskId,
+                            title = updatedTitle,
+                            value = updatedValue,
+                            dueEpochDay = dueEpochDay,
+                            subtaskDrafts = sanitizedSubtasks,
+                            now = editTimestamp
+                        ),
                         id = pendingTaskId,
-                        title = updatedTitle,
-                        value = updatedValue,
-                        dueEpochDay = dueEpochDay
-                    ),
-                    id = pendingTaskId,
-                    assignedValueForInboxToFocus = updatedValue
-                ).state
-            } else {
+                        assignedValueForInboxToFocus = updatedValue
+                    ).state
+                } else {
                     when (target.kind) {
                         KIND_TASK -> KudoReducer.updateTask(
                             state = state,
                             id = target.id,
                             title = sanitizedTitle,
                             value = parsedValue,
-                            dueEpochDay = dueEpochDay
+                            dueEpochDay = dueEpochDay,
+                            subtaskDrafts = sanitizedSubtasks,
+                            now = editTimestamp
                         )
 
                         KIND_STORE -> KudoReducer.updateStoreItem(
@@ -369,11 +399,12 @@ class KudoViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun reorderCurrentTaskList(orderedIds: List<Long>) {
+        val listMode = uiState.value.data.listMode
         viewModelScope.launch {
             repository.updateState { state ->
                 KudoReducer.setTaskSortMode(
-                    state = KudoReducer.reorderTasks(state, state.listMode, orderedIds),
-                    listMode = state.listMode,
+                    state = KudoReducer.reorderTasks(state, listMode, orderedIds),
+                    listMode = listMode,
                     sortMode = KudoState.TASK_SORT_MANUAL
                 )
             }
@@ -419,6 +450,12 @@ class KudoViewModel(application: Application) : AndroidViewModel(application) {
     fun setTheme(theme: String) {
         viewModelScope.launch {
             repository.setTheme(theme)
+        }
+    }
+
+    fun setSubtaskModeEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            repository.setSubtaskModeEnabled(enabled)
         }
     }
 
@@ -477,6 +514,7 @@ class KudoViewModel(application: Application) : AndroidViewModel(application) {
 data class KudoUiState(
     val data: KudoState = KudoState(),
     val theme: String = KudoStateRepository.THEME_SYSTEM,
+    val isSubtaskModeEnabled: Boolean = false,
     val currentView: String = KudoViewModel.VIEW_TASKS,
     val taskCreationTarget: TaskCreationTarget = TaskCreationTarget.INBOX,
     val storeMode: Int = KudoState.STORE_ONCE,
