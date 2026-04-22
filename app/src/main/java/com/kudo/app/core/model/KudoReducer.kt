@@ -106,7 +106,7 @@ object KudoReducer {
     fun completeTask(state: KudoState, id: Long, now: Long = System.currentTimeMillis()): KudoState {
         val task = state.tasks.firstOrNull { it.id == id } ?: return state
         val baseValue = task.remainingValue
-        val reward = floor(baseValue * state.finalMultiplier).toInt()
+        val reward = floor(baseValue * state.multiplier).toInt()
         val rewarded = state.copy(coins = state.coins + reward)
         val grown = processGrowth(rewarded, baseValue)
         val log = KudoLogEntry(
@@ -138,7 +138,7 @@ object KudoReducer {
     ): KudoState {
         val task = state.tasks.firstOrNull { it.id == taskId } ?: return state
         val subtask = task.subtasks.firstOrNull { it.id == subtaskId && !it.isCompleted } ?: return state
-        val reward = floor(subtask.valAmount * state.finalMultiplier).toInt()
+        val reward = floor(subtask.valAmount * state.multiplier).toInt()
         val rewarded = state.copy(coins = state.coins + reward)
         val grown = processGrowth(rewarded, subtask.valAmount)
         val updatedTask = task.copy(
@@ -179,7 +179,7 @@ object KudoReducer {
 
     fun completeHabit(state: KudoState, id: Long, now: Long = System.currentTimeMillis()): KudoState {
         val habit = state.tasks.firstOrNull { it.id == id } ?: return state
-        val reward = floor(habit.valAmount * state.finalMultiplier).toInt()
+        val reward = floor(habit.valAmount * state.multiplier).toInt()
         val rewarded = state.copy(coins = state.coins + reward)
         val grown = processGrowth(rewarded, habit.valAmount)
         val updatedTasks = grown.tasks.map { current ->
@@ -237,14 +237,6 @@ object KudoReducer {
         val log = state.logs.getOrNull(index) ?: return state
         var nextState = state.copy(coins = state.coins - log.value)
 
-        if (log.value > 0 && log.type == "task") {
-            val base = log.baseValue ?: log.itemData?.valAmount ?: 0
-            nextState = nextState.copy(
-                life = nextState.life - base,
-                maxCoins = nextState.maxCoins - base
-            )
-        }
-
         log.itemData?.let { itemData ->
             when (log.type) {
                 "task" -> {
@@ -286,7 +278,7 @@ object KudoReducer {
         id: Long,
         title: String,
         value: Int,
-        dueEpochDay: Long?,
+        dueAtEpochMillis: Long?,
         subtaskDrafts: List<KudoSubtaskDraft>? = null,
         now: Long = System.currentTimeMillis()
     ): KudoState {
@@ -297,7 +289,7 @@ object KudoReducer {
                     val resolvedSubtasks = if (task.type == KudoState.TYPE_TASK && subtaskDrafts == null) {
                         task.subtasks
                     } else if (task.type == KudoState.TYPE_TASK && !isLocked) {
-                        createWeightedSubtasks(
+                        createSubtasks(
                             drafts = subtaskDrafts.orEmpty(),
                             totalValue = value,
                             now = now
@@ -308,7 +300,7 @@ object KudoReducer {
                     task.copy(
                         title = title.ifBlank { task.title },
                         valAmount = if (isLocked) task.valAmount else value,
-                        dueEpochDay = dueEpochDay,
+                        dueAtEpochMillis = dueAtEpochMillis,
                         subtasks = resolvedSubtasks
                     )
                 } else {
@@ -376,8 +368,8 @@ object KudoReducer {
             .filter { it.type == KudoState.TYPE_TASK && it.list == listMode }
             .sortedWith(
                 compareBy<KudoTask>(
-                    { it.dueEpochDay == null },
-                    { it.dueEpochDay ?: Long.MAX_VALUE },
+                    { it.dueAtEpochMillis == null },
+                    { it.dueAtEpochMillis ?: Long.MAX_VALUE },
                     { it.id }
                 )
             )
@@ -427,8 +419,6 @@ object KudoReducer {
     }
 
     private fun processGrowth(state: KudoState, value: Int): KudoState {
-        val updatedLife = state.life + value
-        val updatedMaxCoins = maxOf(state.maxCoins, state.coins + value)
         val average = if (state.recentVals.isNotEmpty()) {
             state.recentVals.average()
         } else {
@@ -442,8 +432,6 @@ object KudoReducer {
         val updatedRecentVals = (state.recentVals + value).takeLast(5)
 
         return state.copy(
-            life = updatedLife,
-            maxCoins = updatedMaxCoins,
             multiplier = updatedMultiplier,
             recentVals = updatedRecentVals
         )
@@ -480,79 +468,26 @@ object KudoReducer {
         }
     }
 
-    private fun createWeightedSubtasks(
+    private fun createSubtasks(
         drafts: List<KudoSubtaskDraft>,
         totalValue: Int,
         now: Long
     ): List<KudoSubtask> {
-        val sanitizedDrafts = drafts.mapNotNull { draft ->
-            val title = draft.title.trim()
-            if (title.isBlank()) {
-                null
-            } else {
-                KudoSubtaskDraft(
-                    title = title,
-                    difficulty = when (draft.difficulty) {
-                        KudoSubtask.DIFFICULTY_SMALL,
-                        KudoSubtask.DIFFICULTY_LARGE -> draft.difficulty
-                        else -> KudoSubtask.DIFFICULTY_MEDIUM
-                    }
-                )
-            }
+        val titles = drafts.mapNotNull { draft ->
+            draft.title.trim().ifBlank { null }
         }
-        if (sanitizedDrafts.isEmpty()) return emptyList()
+        if (titles.isEmpty()) return emptyList()
 
-        val totalWeight = sanitizedDrafts.sumOf { difficultyWeight(it.difficulty) }.coerceAtLeast(1)
-        val allocations = sanitizedDrafts.mapIndexed { index, draft ->
-            val weight = difficultyWeight(draft.difficulty)
-            val exactShare = totalValue.toDouble() * weight.toDouble() / totalWeight.toDouble()
-            val flooredShare = floor(exactShare).toInt()
-            SubtaskAllocation(
-                index = index,
-                weight = weight,
-                flooredShare = flooredShare,
-                remainder = exactShare - flooredShare.toDouble()
-            )
-        }
-        val baseShares = allocations.map(SubtaskAllocation::flooredShare).toMutableList()
-        var remaining = totalValue - baseShares.sum()
-        val distributionOrder = allocations
-            .sortedWith(
-                compareByDescending<SubtaskAllocation> { it.remainder }
-                    .thenByDescending { it.weight }
-                    .thenBy { it.index }
-            )
-            .map(SubtaskAllocation::index)
-        var distributionIndex = 0
-        while (remaining > 0) {
-            val targetIndex = distributionOrder[distributionIndex % distributionOrder.size]
-            baseShares[targetIndex] += 1
-            remaining -= 1
-            distributionIndex += 1
-        }
+        val count = titles.size
+        val base = totalValue / count
+        val remainder = totalValue % count
 
-        return sanitizedDrafts.mapIndexed { subtaskIndex, draft ->
+        return titles.mapIndexed { index, title ->
             KudoSubtask(
-                id = now + subtaskIndex + 1L,
-                title = draft.title,
-                valAmount = baseShares[subtaskIndex],
-                difficulty = draft.difficulty
+                id = now + index + 1L,
+                title = title,
+                valAmount = base + if (index < remainder) 1 else 0
             )
         }
     }
-
-    private fun difficultyWeight(difficulty: Int): Int {
-        return when (difficulty) {
-            KudoSubtask.DIFFICULTY_SMALL -> 1
-            KudoSubtask.DIFFICULTY_LARGE -> 3
-            else -> 2
-        }
-    }
-
-    private data class SubtaskAllocation(
-        val index: Int,
-        val weight: Int,
-        val flooredShare: Int,
-        val remainder: Double
-    )
 }

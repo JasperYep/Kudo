@@ -25,7 +25,7 @@ class KudoReducerSubtaskTest {
             id = 1L,
             title = "Launch",
             value = 12,
-            dueEpochDay = null,
+            dueAtEpochMillis = null,
             subtaskDrafts = listOf(
                 KudoSubtaskDraft("Plan", KudoSubtask.DIFFICULTY_SMALL),
                 KudoSubtaskDraft("Build", KudoSubtask.DIFFICULTY_MEDIUM),
@@ -50,7 +50,6 @@ class KudoReducerSubtaskTest {
 
         val updatedTask = completed.tasks.first()
         assertEquals(2, completed.coins)
-        assertEquals(2, completed.life)
         assertEquals(1, updatedTask.completedSubtaskCount)
         assertEquals(10, updatedTask.remainingValue)
         assertTrue(updatedTask.subtasks.first().isCompleted)
@@ -69,7 +68,6 @@ class KudoReducerSubtaskTest {
         val finished = KudoReducer.completeTask(firstPass, 1L, now = 300L)
 
         assertEquals(12, finished.coins)
-        assertEquals(12, finished.life)
         assertTrue(finished.tasks.isEmpty())
         assertEquals(10, finished.logs.first().baseValue)
     }
@@ -87,7 +85,6 @@ class KudoReducerSubtaskTest {
         val undone = KudoReducer.undoLog(progressed, 0)
 
         assertEquals(0, undone.coins)
-        assertEquals(0, undone.life)
         assertEquals(1, undone.tasks.size)
         assertFalse(undone.tasks.first().subtasks.first().isCompleted)
         assertTrue(undone.logs.isEmpty())
@@ -108,7 +105,7 @@ class KudoReducerSubtaskTest {
             id = 1L,
             title = "Launch v2",
             value = 99,
-            dueEpochDay = 5L,
+            dueAtEpochMillis = 5_000L,
             subtaskDrafts = listOf(
                 KudoSubtaskDraft("Different", KudoSubtask.DIFFICULTY_LARGE)
             ),
@@ -118,7 +115,7 @@ class KudoReducerSubtaskTest {
         val task = updated.tasks.first()
         assertEquals("Launch v2", task.title)
         assertEquals(12, task.valAmount)
-        assertEquals(5L, task.dueEpochDay)
+        assertEquals(5_000L, task.dueAtEpochMillis)
         assertEquals(listOf("Plan", "Build", "Ship"), task.subtasks.map(KudoSubtask::title))
         assertEquals(listOf(2, 4, 6), task.subtasks.map(KudoSubtask::valAmount))
         assertTrue(task.subtasks.first().isCompleted)
@@ -139,7 +136,7 @@ class KudoReducerSubtaskTest {
             id = 1L,
             title = "Launch",
             value = 12,
-            dueEpochDay = null,
+            dueAtEpochMillis = null,
             subtaskDrafts = listOf(
                 KudoSubtaskDraft("Plan", KudoSubtask.DIFFICULTY_SMALL),
                 KudoSubtaskDraft("Build", KudoSubtask.DIFFICULTY_MEDIUM),

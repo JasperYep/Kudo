@@ -3,13 +3,19 @@
 package com.kudo.app.ui.screens
 
 import android.app.DatePickerDialog
+import android.app.AlarmManager
+import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.SystemClock
+import android.os.Build
+import android.provider.Settings
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
+import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
@@ -161,6 +167,7 @@ import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
+import androidx.core.content.ContextCompat
 import com.kudo.app.core.platform.KudoHaptics
 import com.kudo.app.core.model.KudoLogEntry
 import com.kudo.app.core.model.KudoState
@@ -244,8 +251,6 @@ fun HomeScreen(
     LaunchedEffect(uiState.currentView) {
         activeComposerRevealProgress = 0f
     }
-    val pullHintAlpha = ((activeComposerRevealProgress * 0.45f) + 0.2f)
-        .coerceIn(0.2f, 0.55f)
     val exportLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.CreateDocument("application/json")
     ) { uri ->
@@ -269,6 +274,55 @@ fun HomeScreen(
             pendingImportUri = uri
         }
     }
+    val notificationPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { }
+    var notificationPermissionPrompted by rememberSaveable { mutableStateOf(false) }
+    var exactAlarmPrompted by rememberSaveable { mutableStateOf(false) }
+    val hasFutureReminders by remember(uiState.data.tasks) {
+        derivedStateOf {
+            val now = System.currentTimeMillis()
+            uiState.data.tasks.any { task ->
+                task.type == KudoState.TYPE_TASK &&
+                    (task.dueAtEpochMillis ?: 0L) > now
+            }
+        }
+    }
+
+    LaunchedEffect(hasFutureReminders) {
+        if (!hasFutureReminders) {
+            notificationPermissionPrompted = false
+            exactAlarmPrompted = false
+            return@LaunchedEffect
+        }
+
+        if (
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            !notificationPermissionPrompted &&
+            ContextCompat.checkSelfPermission(
+                context,
+                android.Manifest.permission.POST_NOTIFICATIONS
+            ) != PackageManager.PERMISSION_GRANTED
+        ) {
+            notificationPermissionPrompted = true
+            notificationPermissionLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+        }
+
+        val alarmManager = context.getSystemService(AlarmManager::class.java)
+        if (
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
+            !exactAlarmPrompted &&
+            !alarmManager.canScheduleExactAlarms()
+        ) {
+            exactAlarmPrompted = true
+            context.startActivity(
+                Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM).apply {
+                    data = Uri.parse("package:${context.packageName}")
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+            )
+        }
+    }
 
     Scaffold(
         containerColor = palette.background,
@@ -289,8 +343,6 @@ fun HomeScreen(
             Header(
                 state = uiState.data,
                 palette = palette,
-                showPullHint = uiState.currentView != KudoViewModel.VIEW_LOG && activeComposerRevealProgress <= 0.02f,
-                pullHintAlpha = pullHintAlpha,
                 onOpenSettings = viewModel::openSettings
             )
 
@@ -384,6 +436,17 @@ fun HomeScreen(
                         listState = logListState
                     )
                 }
+
+                UndoBanner(
+                    visible = uiState.showUndoBanner,
+                    latestLog = uiState.data.logs.firstOrNull(),
+                    palette = palette,
+                    onUndo = { viewModel.undoLog(0) },
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .navigationBarsPadding()
+                        .padding(bottom = 12.dp)
+                )
             }
         }
     }
@@ -396,7 +459,7 @@ fun HomeScreen(
             onDismiss = viewModel::closeSettings,
             onToggleHelp = viewModel::toggleHelp,
             onSetTheme = viewModel::setTheme,
-            onSetSubtaskModeEnabled = viewModel::setSubtaskModeEnabled,
+
             onExport = {
                 val filename = "kudo_backup_${System.currentTimeMillis()}.json"
                 exportLauncher.launch(filename)
@@ -474,7 +537,7 @@ internal data class KudoPalette(
     val red: Color
 )
 
-private val HeaderHeight = 120.dp
+private val HeaderHeight = 80.dp
 internal const val HapticTickMs = 8L
 internal const val HapticConfirmMs = 12L
 internal const val HapticErrorMs = 24L
@@ -901,6 +964,17 @@ private fun PullComposerPage(
                 ) { locked ->
                     childGestureLocked = locked
                 }
+
+                val hintAlpha = if (composerRevealProgress <= 0.02f) 0.35f else 0f
+                Text(
+                    text = "swipe down to add",
+                    color = palette.textSub.copy(alpha = hintAlpha),
+                    fontSize = 11.sp,
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .padding(top = 10.dp),
+                    textAlign = TextAlign.Center
+                )
             }
         }
     }
@@ -910,136 +984,83 @@ private fun PullComposerPage(
 private fun Header(
     state: KudoState,
     palette: KudoPalette,
-    showPullHint: Boolean,
-    pullHintAlpha: Float,
     onOpenSettings: () -> Unit
 ) {
     val animatedCoins by animateIntAsState(targetValue = state.coins, label = "coins")
-    val xpProgress by animateFloatAsState(
-        targetValue = xpProgress(state),
-        label = "xp"
-    )
 
     Surface(
         color = palette.card,
-        tonalElevation = 2.dp,
-        shadowElevation = 2.dp
+        tonalElevation = 0.dp,
+        shadowElevation = 0.dp
     ) {
-        Box(
+        Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(HeaderHeight)
+                .padding(horizontal = 20.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
         ) {
             Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(horizontal = 20.dp, vertical = 16.dp)
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center
             ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        Text(
-                            text = "LVL ${state.level}",
-                            color = palette.gold,
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold,
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(6.dp))
-                                .background(palette.goldBg)
-                                .padding(horizontal = 6.dp, vertical = 3.dp)
-                        )
-                        Box(
-                            modifier = Modifier
-                                .width(50.dp)
-                                .height(3.dp)
-                                .clip(RoundedCornerShape(999.dp))
-                                .background(palette.line)
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth(xpProgress)
-                                    .height(3.dp)
-                                    .clip(RoundedCornerShape(999.dp))
-                                    .background(palette.gold)
-                            )
-                        }
-                    }
-
-                    Box(
-                        modifier = Modifier
-                            .size(38.dp)
-                            .clip(CircleShape)
-                            .clickable(
-                                interactionSource = remember { MutableInteractionSource() },
-                                indication = null
-                            ) { onOpenSettings() },
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.Rounded.Settings,
-                            contentDescription = "Settings",
-                            tint = palette.textSub,
-                            modifier = Modifier.size(21.dp)
-                        )
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(12.dp))
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.Bottom
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.Bottom
-                    ) {
-                        Text(
-                            text = "${'$'}",
-                            color = palette.green,
-                            fontSize = 18.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            modifier = Modifier.padding(bottom = 4.dp)
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text(
-                            text = animatedCoins.toString(),
-                            color = palette.textMain,
-                            fontSize = 34.sp,
-                            fontWeight = FontWeight.Bold,
-                            letterSpacing = (-0.5).sp
-                        )
-                    }
-
-                    Text(
-                        text = "${formatMultiplier(state.finalMultiplier)}x",
-                        color = palette.textSub,
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(6.dp))
-                            .border(1.dp, palette.line, RoundedCornerShape(6.dp))
-                            .background(palette.card)
-                            .padding(horizontal = 8.dp, vertical = 4.dp)
-                    )
-                }
+                Text(
+                    text = "MULT",
+                    color = palette.textSub,
+                    fontSize = 8.sp,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 0.5.sp
+                )
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = "${formatMultiplier(state.multiplier)}x",
+                    color = palette.textSub,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(6.dp))
+                        .border(1.dp, palette.line, RoundedCornerShape(6.dp))
+                        .background(palette.card)
+                        .padding(horizontal = 8.dp, vertical = 3.dp)
+                )
             }
 
-            Text(
-                text = "swipe down to add...",
-                color = palette.textSub.copy(alpha = if (showPullHint) pullHintAlpha else 0f),
-                fontSize = 11.sp,
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = "${'$'}",
+                    color = palette.green,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.padding(bottom = 2.dp)
+                )
+                Spacer(modifier = Modifier.width(3.dp))
+                Text(
+                    text = animatedCoins.toString(),
+                    color = palette.textMain,
+                    fontSize = 30.sp,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = (-0.5).sp
+                )
+            }
+
+            Box(
                 modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .padding(bottom = 4.dp),
-                textAlign = TextAlign.Center
-            )
+                    .size(38.dp)
+                    .clip(CircleShape)
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null
+                    ) { onOpenSettings() },
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.Settings,
+                    contentDescription = "Settings",
+                    tint = palette.textSub,
+                    modifier = Modifier.size(21.dp)
+                )
+            }
         }
     }
 }
@@ -1160,12 +1181,7 @@ private fun DashboardCard(
                         .background(palette.line)
                 )
 
-                Text(
-                    text = modeText,
-                    color = modeColor,
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    letterSpacing = 0.5.sp,
+                Row(
                     modifier = Modifier
                         .weight(1f)
                         .clickable(
@@ -1175,8 +1191,24 @@ private fun DashboardCard(
                             haptics.vibrate(HapticTickMs)
                             onModeToggle()
                         }
-                        .padding(horizontal = 8.dp)
-                )
+                        .padding(horizontal = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = modeText,
+                        color = modeColor,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        letterSpacing = 0.5.sp
+                    )
+                    Spacer(modifier = Modifier.width(3.dp))
+                    Icon(
+                        imageVector = Icons.Rounded.KeyboardArrowDown,
+                        contentDescription = null,
+                        tint = modeColor,
+                        modifier = Modifier.size(13.dp)
+                    )
+                }
 
                 Box(
                     modifier = Modifier
@@ -1233,7 +1265,8 @@ private fun TasksPage(
 ) {
     val haptics = rememberKudoHaptics()
     var isHabitGestureLocked by remember { mutableStateOf(false) }
-    var isTaskItemGestureLocked by remember(uiState.data.listMode) { mutableStateOf(false) }
+    var isTaskSwipeGestureLocked by remember(uiState.data.listMode) { mutableStateOf(false) }
+    var isTaskLongPressGestureLocked by remember(uiState.data.listMode) { mutableStateOf(false) }
     var isTaskTabGestureLocked by remember { mutableStateOf(false) }
     val habits = remember(uiState.data.tasks) {
         uiState.data.tasks.filter { it.type == KudoState.TYPE_HABIT }
@@ -1273,11 +1306,6 @@ private fun TasksPage(
     LaunchedEffect(tasks.map(KudoTask::id)) {
         expandedTaskIds = expandedTaskIds.filter { expandedId ->
             tasks.any { it.id == expandedId && it.hasSubtasks }
-        }
-    }
-    LaunchedEffect(uiState.isSubtaskModeEnabled) {
-        if (!uiState.isSubtaskModeEnabled) {
-            expandedTaskIds = emptyList()
         }
     }
 
@@ -1334,7 +1362,8 @@ private fun TasksPage(
     val isListGestureLocked =
         isTaskReordering ||
             isHabitGestureLocked ||
-            isTaskItemGestureLocked ||
+            isTaskSwipeGestureLocked ||
+            isTaskLongPressGestureLocked ||
             isTaskTabGestureLocked
 
     LaunchedEffect(habits) {
@@ -1359,7 +1388,8 @@ private fun TasksPage(
     DisposableEffect(Unit) {
         onDispose {
             isHabitGestureLocked = false
-            isTaskItemGestureLocked = false
+            isTaskSwipeGestureLocked = false
+            isTaskLongPressGestureLocked = false
             isTaskTabGestureLocked = false
             onGestureLockChange(false)
         }
@@ -1387,6 +1417,7 @@ private fun TasksPage(
             item(key = "habits_grid") {
                 AnimatedVisibility(
                     visible = !uiState.habitsCollapsed,
+                    modifier = Modifier.clipToBounds(),
                     enter = fadeIn(animationSpec = tween(150)) + expandVertically(
                         animationSpec = spring(
                             dampingRatio = 0.86f,
@@ -1400,7 +1431,7 @@ private fun TasksPage(
                     HabitsGrid(
                         habits = localHabits,
                         palette = palette,
-                        finalMultiplier = uiState.data.finalMultiplier,
+                        finalMultiplier = uiState.data.multiplier,
                         isJiggleMode = uiState.isHabitJiggleMode,
                         modifier = Modifier.padding(horizontal = 16.dp),
                         onGestureLockChange = { isHabitGestureLocked = it },
@@ -1467,22 +1498,22 @@ private fun TasksPage(
                         TaskRow(
                             task = task,
                             palette = palette,
-                            finalMultiplier = uiState.data.finalMultiplier,
-                            subtaskModeEnabled = uiState.isSubtaskModeEnabled,
+                            finalMultiplier = uiState.data.multiplier,
+
                             isDragging = isDragging,
                             expanded = task.id in expandedTaskIds,
                             modifier = Modifier
                                 .padding(horizontal = 16.dp, vertical = 2.dp)
                                 .lockParentGestureOnLongPress {
-                                    isTaskItemGestureLocked = it
+                                    isTaskLongPressGestureLocked = it
                                 }
                                 .reorderLongPressFeedback(
                                     enabled = true,
                                     haptics = haptics
                                 )
                                 .detectReorderAfterLongPress(state),
-                            swipeEnabled = !isDragging,
-                            onGestureLockChange = { isTaskItemGestureLocked = it },
+                            swipeEnabled = !isDragging && !isTaskLongPressGestureLocked,
+                            onGestureLockChange = { isTaskSwipeGestureLocked = it },
                             onComplete = {
                                 onExitHabitJiggle()
                                 onCompleteTask(task.id)
@@ -2630,7 +2661,6 @@ private fun TaskRow(
     task: KudoTask,
     palette: KudoPalette,
     finalMultiplier: Float,
-    subtaskModeEnabled: Boolean,
     isDragging: Boolean = false,
     expanded: Boolean = false,
     modifier: Modifier = Modifier,
@@ -2646,11 +2676,11 @@ private fun TaskRow(
     val haptics = rememberKudoHaptics()
     val reward = (task.remainingValue * finalMultiplier).toInt()
     val canMoveTask = task.list != KudoState.LIST_INBOX || task.valAmount > 0
-    val dueBadge = remember(task.dueEpochDay, palette) {
-        task.dueEpochDay?.let { dueBadgeFor(it, palette) }
+    val dueBadge = remember(task.dueAtEpochMillis, palette) {
+        task.dueAtEpochMillis?.let { dueBadgeFor(it, palette) }
     }
-    val subtaskProgress = remember(task.subtasks, subtaskModeEnabled) {
-        if (subtaskModeEnabled && task.hasSubtasks) {
+    val subtaskProgress = remember(task.subtasks) {
+        if (task.hasSubtasks) {
             "${task.completedSubtaskCount}/${task.subtasks.size}"
         } else {
             null
@@ -2774,7 +2804,7 @@ private fun TaskRow(
                 }
             }
             AnimatedVisibility(
-                visible = subtaskModeEnabled && expanded && task.hasSubtasks,
+                visible = expanded && task.hasSubtasks,
                 enter = fadeIn() + expandVertically(),
                 exit = fadeOut()
             ) {
@@ -2848,21 +2878,14 @@ private fun SubtaskRow(
             }
         }
         Spacer(modifier = Modifier.width(10.dp))
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = subtask.title,
-                color = if (subtask.isCompleted) palette.textSub else palette.textMain,
-                fontSize = 13.sp,
-                fontWeight = FontWeight.Medium,
-                textDecoration = if (subtask.isCompleted) TextDecoration.LineThrough else null
-            )
-            Text(
-                text = subtaskDifficultyLabel(subtask.difficulty),
-                color = palette.textSub,
-                fontSize = 10.sp,
-                fontWeight = FontWeight.Bold
-            )
-        }
+        Text(
+            text = subtask.title,
+            color = if (subtask.isCompleted) palette.textSub else palette.textMain,
+            fontSize = 13.sp,
+            fontWeight = FontWeight.Medium,
+            textDecoration = if (subtask.isCompleted) TextDecoration.LineThrough else null,
+            modifier = Modifier.weight(1f)
+        )
         Text(
             text = "+${'$'}" + reward,
             color = if (subtask.isCompleted) palette.textSub else palette.green,
@@ -3365,6 +3388,56 @@ private fun LogRow(
 }
 
 @Composable
+private fun UndoBanner(
+    visible: Boolean,
+    latestLog: KudoLogEntry?,
+    palette: KudoPalette,
+    onUndo: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    AnimatedVisibility(
+        visible = visible,
+        modifier = modifier,
+        enter = fadeIn(tween(220)) + slideInVertically(tween(260, easing = CubicBezierEasing(0.22f, 1f, 0.36f, 1f))) { it / 2 },
+        exit = fadeOut(tween(160))
+    ) {
+        Row(
+            modifier = Modifier
+                .clip(RoundedCornerShape(20.dp))
+                .background(palette.card)
+                .border(1.dp, palette.line, RoundedCornerShape(20.dp))
+                .padding(start = 16.dp, end = 6.dp, top = 10.dp, bottom = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Text(
+                text = latestLog?.text?.let { if (it.length > 30) it.take(30) + "…" else it } ?: "Done",
+                color = palette.textSub,
+                fontSize = 13.sp
+            )
+            Box(
+                modifier = Modifier
+                    .width(1.dp)
+                    .height(14.dp)
+                    .background(palette.line)
+            )
+            Text(
+                text = "undo",
+                color = palette.textMain,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null
+                    ) { onUndo() }
+                    .padding(horizontal = 10.dp, vertical = 4.dp)
+            )
+        }
+    }
+}
+
+@Composable
 private fun BottomTabs(
     uiState: KudoUiState,
     palette: KudoPalette,
@@ -3401,7 +3474,7 @@ private fun BottomTabs(
             BottomTabItem(
                 modifier = Modifier.weight(1f),
                 selected = uiState.currentView == KudoViewModel.VIEW_LOG,
-                label = "Kudo",
+                label = "Log",
                 icon = Icons.Rounded.BarChart,
                 selectedColor = palette.textMain,
                 mutedColor = palette.textSub,
@@ -3514,12 +3587,6 @@ private fun DashboardTextField(
 }
 
 
-private fun xpProgress(state: KudoState): Float {
-    val level = state.level
-    val base = 100 * (level - 1) * (level - 1)
-    val next = 100 * level * level
-    return ((state.life - base).toFloat() / (next - base).toFloat()).coerceIn(0f, 1f)
-}
 
 private fun formatMultiplier(multiplier: Float): String {
     return String.format(Locale.US, "%.2f", multiplier)
@@ -3545,60 +3612,50 @@ private fun sortTasksForDisplay(
 
         else -> tasks.sortedWith(
             compareBy<KudoTask>(
-                { it.dueEpochDay == null },
-                { it.dueEpochDay ?: Long.MAX_VALUE }
+                { it.dueAtEpochMillis == null },
+                { it.dueAtEpochMillis ?: Long.MAX_VALUE }
             )
         )
     }
 }
 
-internal fun subtaskDifficultyLabel(difficulty: Int): String {
-    return when (difficulty) {
-        KudoSubtask.DIFFICULTY_SMALL -> "S"
-        KudoSubtask.DIFFICULTY_LARGE -> "L"
-        else -> "M"
-    }
-}
-
-internal fun nextSubtaskDifficulty(difficulty: Int): Int {
-    return when (difficulty) {
-        KudoSubtask.DIFFICULTY_SMALL -> KudoSubtask.DIFFICULTY_MEDIUM
-        KudoSubtask.DIFFICULTY_MEDIUM -> KudoSubtask.DIFFICULTY_LARGE
-        else -> KudoSubtask.DIFFICULTY_SMALL
-    }
-}
 
 internal fun dueBadgeFor(
-    dueEpochDay: Long,
+    dueAtEpochMillis: Long,
     palette: KudoPalette
 ): DueBadge {
-    val dueDate = LocalDate.ofEpochDay(dueEpochDay)
+    val dueDateTime = Instant.ofEpochMilli(dueAtEpochMillis).atZone(AppZoneId)
+    val dueDate = dueDateTime.toLocalDate()
+    val dueLabel = dueDateTime.format(DueDateTimeFormatter)
     val today = LocalDate.now(AppZoneId)
+    val now = System.currentTimeMillis()
     return when {
-        dueDate.isBefore(today) -> DueBadge(
-            text = "Overdue · ${dueDate.format(DueDateFormatter)}",
+        dueAtEpochMillis < now -> DueBadge(
+            text = "Overdue · $dueLabel",
             color = palette.red
         )
 
         dueDate == today -> DueBadge(
-            text = "Today",
+            text = "Today · ${dueDateTime.format(TimeFormatter)}",
             color = palette.orange
         )
 
         dueDate == today.plusDays(1) -> DueBadge(
-            text = "Tomorrow",
+            text = "Tomorrow · ${dueDateTime.format(TimeFormatter)}",
             color = palette.blue
         )
 
         else -> DueBadge(
-            text = dueDate.format(DueDateFormatter),
+            text = dueLabel,
             color = palette.textSub
         )
     }
 }
 
-internal fun formatCompactDueDate(dueEpochDay: Long): String {
-    return LocalDate.ofEpochDay(dueEpochDay).format(EditableDueDateFormatter)
+internal fun formatCompactDueDate(dueAtEpochMillis: Long): String {
+    return Instant.ofEpochMilli(dueAtEpochMillis)
+        .atZone(AppZoneId)
+        .format(EditableDueDateTimeFormatter)
 }
 
 private fun formatTime(timestamp: Long): String {
@@ -3645,11 +3702,11 @@ private fun buildTrend(logs: List<KudoLogEntry>, positive: Boolean): List<Float>
     return buckets.toList()
 }
 
-private val AppZoneId: ZoneId = ZoneId.systemDefault()
+internal val AppZoneId: ZoneId = ZoneId.systemDefault()
 private val TimeFormatter: DateTimeFormatter = DateTimeFormatter.ofPattern("H:mm", Locale.getDefault())
 private val DayHeaderFormatter: DateTimeFormatter =
     DateTimeFormatter.ofPattern("MMM dd", Locale.getDefault())
-private val DueDateFormatter: DateTimeFormatter =
-    DateTimeFormatter.ofPattern("MMM d", Locale.getDefault())
-private val EditableDueDateFormatter: DateTimeFormatter =
-    DateTimeFormatter.ofPattern("EEE, MMM d", Locale.getDefault())
+private val DueDateTimeFormatter: DateTimeFormatter =
+    DateTimeFormatter.ofPattern("MMM d · H:mm", Locale.getDefault())
+private val EditableDueDateTimeFormatter: DateTimeFormatter =
+    DateTimeFormatter.ofPattern("EEE, MMM d · H:mm", Locale.getDefault())

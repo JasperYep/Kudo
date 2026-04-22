@@ -1,13 +1,10 @@
 package com.kudo.app.core.model
 
 import androidx.compose.runtime.Immutable
-import kotlin.math.sqrt
 
 @Immutable
 data class KudoState(
     val coins: Int = 0,
-    val life: Int = 0,
-    val maxCoins: Int = 0,
     val tasks: List<KudoTask> = emptyList(),
     val store: List<KudoStoreItem> = emptyList(),
     val logs: List<KudoLogEntry> = emptyList(),
@@ -17,12 +14,6 @@ data class KudoState(
     val focusSortMode: Int = TASK_SORT_AUTO_DUE,
     val inboxSortMode: Int = TASK_SORT_AUTO_DUE
 ) {
-    val level: Int
-        get() = sqrt(life / 100.0).toInt() + 1
-
-    val finalMultiplier: Float
-        get() = multiplier * (1 + (level - 1) * 0.01f)
-
     fun taskSortModeFor(list: String): Int {
         return when (list) {
             LIST_INBOX -> inboxSortMode
@@ -55,7 +46,7 @@ data class KudoTask(
     val last: Long = 0L,
     val list: String = KudoState.LIST_FOCUS,
     val order: Long = id,
-    val dueEpochDay: Long? = null,
+    val dueAtEpochMillis: Long? = null,
     val subtasks: List<KudoSubtask> = emptyList()
 ) {
     val isHabit: Boolean
@@ -110,7 +101,7 @@ data class KudoLogItemData(
     val last: Long = 0L,
     val list: String = KudoState.LIST_FOCUS,
     val order: Long = id,
-    val dueEpochDay: Long? = null,
+    val dueAtEpochMillis: Long? = null,
     val subtasks: List<KudoSubtask> = emptyList()
 ) {
     fun toTask(): KudoTask = KudoTask(
@@ -122,7 +113,7 @@ data class KudoLogItemData(
         last = last,
         list = list,
         order = order,
-        dueEpochDay = dueEpochDay,
+        dueAtEpochMillis = dueAtEpochMillis,
         subtasks = subtasks
     )
 
@@ -143,7 +134,7 @@ data class KudoLogItemData(
             last = task.last,
             list = task.list,
             order = task.order,
-            dueEpochDay = task.dueEpochDay,
+            dueAtEpochMillis = task.dueAtEpochMillis,
             subtasks = task.subtasks
         )
 
@@ -161,28 +152,13 @@ data class KudoSubtask(
     val id: Long,
     val title: String,
     val valAmount: Int = 0,
-    val difficulty: Int = DIFFICULTY_MEDIUM,
     val completedAt: Long? = null
 ) {
     val isCompleted: Boolean
         get() = completedAt != null
-
-    val weight: Int
-        get() = when (difficulty) {
-            DIFFICULTY_SMALL -> 1
-            DIFFICULTY_LARGE -> 3
-            else -> 2
-        }
-
-    companion object {
-        const val DIFFICULTY_SMALL = 0
-        const val DIFFICULTY_MEDIUM = 1
-        const val DIFFICULTY_LARGE = 2
-    }
 }
 
 @Immutable
 data class KudoSubtaskDraft(
-    val title: String,
-    val difficulty: Int = KudoSubtask.DIFFICULTY_MEDIUM
+    val title: String
 )

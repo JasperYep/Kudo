@@ -1,6 +1,13 @@
 package com.kudo.app.ui.screens
 
+import android.app.AlarmManager
 import android.app.DatePickerDialog
+import android.app.TimePickerDialog
+import android.content.Intent
+import android.net.Uri
+import android.os.Build
+import android.os.PowerManager
+import android.provider.Settings
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -42,10 +49,14 @@ import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -65,7 +76,11 @@ import com.kudo.app.core.repository.KudoStateRepository
 import com.kudo.app.ui.viewmodel.EditingTarget
 import com.kudo.app.ui.viewmodel.KudoUiState
 import com.kudo.app.ui.viewmodel.KudoViewModel
+import java.time.Instant
 import java.time.LocalDate
+import java.time.LocalDateTime
+import java.time.LocalTime
+import java.time.format.DateTimeFormatter
 import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -77,7 +92,6 @@ internal fun SettingsSheet(
     onDismiss: () -> Unit,
     onToggleHelp: () -> Unit,
     onSetTheme: (String) -> Unit,
-    onSetSubtaskModeEnabled: (Boolean) -> Unit,
     onExport: () -> Unit,
     onImport: () -> Unit
 ) {
@@ -140,7 +154,6 @@ internal fun SettingsSheet(
             if (!uiState.isHelpVisible) {
                 StatGrid(
                     palette = palette,
-                    maxCoins = uiState.data.maxCoins,
                     ratio = ratio
                 )
 
@@ -182,16 +195,7 @@ internal fun SettingsSheet(
                 }
 
                 Spacer(modifier = Modifier.height(16.dp))
-
-                SettingsToggleRow(
-                    title = "Subtask Mode",
-                    subtitle = "Enable partial coin rewards for larger tasks.",
-                    enabled = uiState.isSubtaskModeEnabled,
-                    palette = palette,
-                    onToggle = {
-                        onSetSubtaskModeEnabled(!uiState.isSubtaskModeEnabled)
-                    }
-                )
+                NotificationPermissionsSection(palette = palette)
 
                 Spacer(modifier = Modifier.height(20.dp))
 
@@ -229,28 +233,15 @@ internal fun SettingsSheet(
 @Composable
 private fun StatGrid(
     palette: KudoPalette,
-    maxCoins: Int,
     ratio: String
 ) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
-        StatCard(
-            title = "Lifetime High",
-            value = maxCoins.toString(),
-            subtitle = "MAX COINS",
-            palette = palette,
-            modifier = Modifier.weight(1f)
-        )
-        StatCard(
-            title = "Income / Expense",
-            value = ratio,
-            subtitle = "RATIO",
-            palette = palette,
-            modifier = Modifier.weight(1f)
-        )
-    }
+    StatCard(
+        title = "Income / Expense",
+        value = ratio,
+        subtitle = "RATIO",
+        palette = palette,
+        modifier = Modifier.fillMaxWidth()
+    )
 }
 
 @Composable
@@ -409,7 +400,7 @@ private fun HelpContent(
             textAlign = TextAlign.Center
         )
         Text(
-            text = "奖励驱动的效率工具：赚取金币，兑换自我奖励。",
+            text = "奖励驱动的效率工具：完成任务赚取金币，在商店兑换自我奖励。",
             color = palette.textSub,
             fontSize = 13.sp,
             modifier = Modifier.fillMaxWidth(),
@@ -417,19 +408,19 @@ private fun HelpContent(
         )
         Text(text = "📌 任务分类", color = palette.textMain, fontWeight = FontWeight.Bold)
         Text(
-            text = "Habits：重复进行的日常项。\nTasks：一次性事项，分为 Focus 与 Inbox。\n子任务模式可在 Settings 中单独开启。",
+            text = "Habits：重复进行的日常项，每次点击完成即可充能并获得金币。\nFocus：当前优先处理的事项。\nInbox：稍后再做的待办，左滑可流转至 Focus。",
             color = palette.textSub,
             fontSize = 13.sp
         )
         Text(text = "🖐️ 手势操作", color = palette.textMain, fontWeight = FontWeight.Bold)
         Text(
-            text = "顶部：在页面顶部下划展开添加面板，提交后会自动收起。\nHabits：点击充能，长按进入编辑 / 排序 / 删除模式。\nTasks：右滑完成，左滑流转，点击编辑可设置截止日；如果在 Settings 开启子任务模式，还可添加子任务并按 S / M / L 自动切分金币；长按排序，长按 Focus / Inbox 标签可恢复默认日期排序。\nStore：滑动消费金币，点击编辑奖励内容，长按排序。",
+            text = "添加：从顶部下划展开输入面板，提交后自动收起。\nHabits：点击完成，长按进入排序 / 删除模式。\nTasks：右滑完成并获得金币，左滑将 Inbox 流转至 Focus，点击可编辑标题、金币值、截止日及子任务，长按拖动排序，长按 Focus / Inbox 标签可恢复默认日期排序。\nStore：右滑消费金币购买奖励，点击编辑内容，长按排序。",
             color = palette.textSub,
             fontSize = 13.sp
         )
         Text(text = "💾 数据安全", color = palette.textMain, fontWeight = FontWeight.Bold)
         Text(
-            text = "备份：通过系统文件管理器导出 JSON 文件。\n恢复：通过系统文件管理器导入备份文件并覆盖当前数据。",
+            text = "备份：通过系统文件管理器将数据导出为 JSON 文件。\n恢复：导入备份文件，会覆盖当前全部数据，请谨慎操作。",
             color = palette.textSub,
             fontSize = 13.sp
         )
@@ -467,9 +458,8 @@ internal fun EditSheet(
     val targetStore = uiState.data.store.firstOrNull { it.id == target.id }
     val isPendingMove = uiState.pendingMoveTaskId != null
     val isTaskEditor = target.kind == KudoViewModel.KIND_TASK && targetTask != null
-    val isSubtaskModeEnabled = uiState.isSubtaskModeEnabled
     val isSubtaskLocked = targetTask?.isSubtaskStructureLocked == true
-    val hasStableSubtaskViewport = isTaskEditor && isSubtaskModeEnabled
+    val hasStableSubtaskViewport = isTaskEditor
     val stableSheetViewportHeight = remember(configuration.screenHeightDp) {
         (configuration.screenHeightDp.dp * 0.72f).coerceAtMost(560.dp)
     }
@@ -489,16 +479,22 @@ internal fun EditSheet(
             }
         )
     }
-    var dueEpochDay by remember(target.id, isPendingMove, targetTask?.dueEpochDay) {
-        mutableStateOf(targetTask?.dueEpochDay)
+    val initialDueDateTime = remember(target.id, isPendingMove, targetTask?.dueAtEpochMillis) {
+        targetTask?.dueAtEpochMillis?.let { Instant.ofEpochMilli(it).atZone(AppZoneId).toLocalDateTime() }
+    }
+    var dueDate by remember(target.id, isPendingMove, targetTask?.dueAtEpochMillis) {
+        mutableStateOf(initialDueDateTime?.toLocalDate())
+    }
+    var hasCustomDueTime by remember(target.id, isPendingMove, targetTask?.dueAtEpochMillis) {
+        mutableStateOf(initialDueDateTime?.toLocalTime() != null && initialDueDateTime.toLocalTime() != DefaultDueTime)
+    }
+    var customDueTime by remember(target.id, isPendingMove, targetTask?.dueAtEpochMillis) {
+        mutableStateOf(initialDueDateTime?.toLocalTime() ?: DefaultDueTime)
     }
     var subtaskDrafts by remember(target.id, isPendingMove, targetTask?.subtasks) {
         mutableStateOf(
             targetTask?.subtasks?.map { subtask ->
-                KudoSubtaskDraft(
-                    title = subtask.title,
-                    difficulty = subtask.difficulty
-                )
+                KudoSubtaskDraft(title = subtask.title)
             } ?: emptyList()
         )
     }
@@ -546,85 +542,67 @@ internal fun EditSheet(
             )
             Spacer(modifier = Modifier.height(14.dp))
             if (isTaskEditor) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    verticalAlignment = Alignment.Top
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        CompactEditLabel(text = "Value", palette = palette)
-                        TextField(
-                            value = value,
-                            onValueChange = { value = it.filter(Char::isDigit) },
-                            enabled = !(isSubtaskModeEnabled && isSubtaskLocked),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .defaultMinSize(minHeight = EditFieldMinHeight),
-                            placeholder = {
-                                Text(
-                                    text = if (isPendingMove) "Set for Focus" else "0",
-                                    color = palette.textSub
-                                )
-                            },
-                            colors = textFieldColors(palette),
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                            shape = EditControlShape,
-                            singleLine = true
-                        )
-                    }
-                    Column(modifier = Modifier.weight(1f)) {
-                        CompactEditLabel(text = "Deadline", palette = palette)
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .defaultMinSize(minHeight = EditFieldMinHeight)
-                                .clip(EditControlShape)
-                                .background(palette.background)
-                                .border(1.dp, palette.line, EditControlShape)
-                                .clickable {
-                                    val initialDate = dueEpochDay
-                                        ?.let(LocalDate::ofEpochDay)
-                                        ?: LocalDate.now()
-                                    DatePickerDialog(
-                                        context,
-                                        { _, year, month, dayOfMonth ->
-                                            dueEpochDay = LocalDate.of(year, month + 1, dayOfMonth).toEpochDay()
-                                        },
-                                        initialDate.year,
-                                        initialDate.monthValue - 1,
-                                        initialDate.dayOfMonth
-                                    ).show()
-                                }
-                                .padding(horizontal = 15.dp, vertical = 14.dp)
-                        ) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(
-                                    text = dueEpochDay?.let(::formatCompactDueDate) ?: "No date",
-                                    color = dueEpochDay?.let { dueBadgeFor(it, palette).color } ?: palette.textMain,
-                                    fontSize = 14.sp,
-                                    fontWeight = FontWeight.Medium,
-                                    maxLines = 1
-                                )
-                                dueEpochDay?.let {
-                                    Text(
-                                        text = "Clear",
-                                        color = palette.textSub,
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        modifier = Modifier.clickable { dueEpochDay = null }
-                                    )
-                                }
-                            }
+                    CompactEditLabel(text = "Value", palette = palette)
+                    TextField(
+                        value = value,
+                        onValueChange = { value = it.filter(Char::isDigit) },
+                        enabled = !isSubtaskLocked,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .defaultMinSize(minHeight = EditFieldMinHeight),
+                        placeholder = {
+                            Text(
+                                text = if (isPendingMove) "Set for Focus" else "0",
+                                color = palette.textSub
+                            )
+                        },
+                        colors = textFieldColors(palette),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        shape = EditControlShape,
+                        singleLine = true
+                    )
+
+                    DeadlinePanel(
+                        palette = palette,
+                        dueDate = dueDate,
+                        hasCustomDueTime = hasCustomDueTime,
+                        customDueTime = customDueTime,
+                        onPickDate = {
+                            val initialDate = dueDate ?: LocalDate.now(AppZoneId)
+                            DatePickerDialog(
+                                context,
+                                { _, year, month, dayOfMonth ->
+                                    dueDate = LocalDate.of(year, month + 1, dayOfMonth)
+                                },
+                                initialDate.year,
+                                initialDate.monthValue - 1,
+                                initialDate.dayOfMonth
+                            ).show()
+                        },
+                        onClearDate = { dueDate = null },
+                        onPickCustomTime = {
+                            TimePickerDialog(
+                                context,
+                                { _, hourOfDay, minute ->
+                                    hasCustomDueTime = true
+                                    customDueTime = LocalTime.of(hourOfDay, minute)
+                                },
+                                customDueTime.hour,
+                                customDueTime.minute,
+                                true
+                            ).show()
+                        },
+                        onResetTime = {
+                            hasCustomDueTime = false
+                            customDueTime = DefaultDueTime
                         }
-                    }
+                    )
                 }
-                if (isSubtaskModeEnabled) {
-                    Spacer(modifier = Modifier.height(18.dp))
-                    CompactEditLabel(text = "Subtasks", palette = palette)
+                Spacer(modifier = Modifier.height(18.dp))
+                CompactEditLabel(text = "Subtasks", palette = palette)
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -645,19 +623,9 @@ internal fun EditSheet(
                                 val existingSubtask = targetTask?.subtasks?.getOrNull(index)
                                 SubtaskEditorRow(
                                     title = draft.title,
-                                    difficulty = draft.difficulty,
                                     completed = existingSubtask?.isCompleted == true,
                                     palette = palette,
                                     locked = isSubtaskLocked,
-                                    onCycleDifficulty = {
-                                        if (!isSubtaskLocked) {
-                                            subtaskDrafts = subtaskDrafts.toMutableList().apply {
-                                                this[index] = draft.copy(
-                                                    difficulty = nextSubtaskDifficulty(draft.difficulty)
-                                                )
-                                            }
-                                        }
-                                    },
                                     onRemove = {
                                         if (!isSubtaskLocked) {
                                             subtaskDrafts = subtaskDrafts.filterIndexed { itemIndex, _ ->
@@ -707,7 +675,7 @@ internal fun EditSheet(
                                 }
                             }
                             Text(
-                                text = "S / M / L changes each subtask's share. Total reward stays fixed.",
+                                text = "Reward is split equally across subtasks.",
                                 color = palette.textSub,
                                 fontSize = 11.sp
                             )
@@ -719,7 +687,6 @@ internal fun EditSheet(
                             )
                         }
                     }
-                }
             } else {
                 CompactEditLabel(text = "Value", palette = palette)
                 TextField(
@@ -766,8 +733,13 @@ internal fun EditSheet(
                         onSave(
                             title,
                             value,
-                            dueEpochDay,
-                            subtaskDrafts.takeIf { isTaskEditor && isSubtaskModeEnabled }
+                            dueDate?.let {
+                                resolveDueAtEpochMillis(
+                                    date = it,
+                                    customTime = customDueTime.takeIf { hasCustomDueTime }
+                                )
+                            },
+                            subtaskDrafts.takeIf { isTaskEditor }
                         )
                     },
                     modifier = Modifier
@@ -791,11 +763,9 @@ internal fun EditSheet(
 @Composable
 private fun SubtaskEditorRow(
     title: String,
-    difficulty: Int,
     completed: Boolean,
     palette: KudoPalette,
     locked: Boolean,
-    onCycleDifficulty: () -> Unit,
     onRemove: () -> Unit
 ) {
     Row(
@@ -807,21 +777,14 @@ private fun SubtaskEditorRow(
             .padding(horizontal = 14.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = title,
-                color = if (completed) palette.textSub else palette.textMain,
-                fontSize = 13.sp,
-                fontWeight = FontWeight.Medium,
-                textDecoration = if (completed) TextDecoration.LineThrough else null,
-                maxLines = 1
-            )
-        }
-        DifficultyChip(
-            difficulty = difficulty,
-            palette = palette,
-            enabled = !locked,
-            onClick = onCycleDifficulty
+        Text(
+            text = title,
+            color = if (completed) palette.textSub else palette.textMain,
+            fontSize = 13.sp,
+            fontWeight = FontWeight.Medium,
+            textDecoration = if (completed) TextDecoration.LineThrough else null,
+            maxLines = 1,
+            modifier = Modifier.weight(1f)
         )
         if (!locked) {
             Spacer(modifier = Modifier.width(8.dp))
@@ -846,37 +809,6 @@ private fun SubtaskEditorRow(
                 )
             }
         }
-    }
-}
-
-@Composable
-private fun DifficultyChip(
-    difficulty: Int,
-    palette: KudoPalette,
-    enabled: Boolean,
-    onClick: () -> Unit
-) {
-    val label = subtaskDifficultyLabel(difficulty)
-    Box(
-        modifier = Modifier
-            .size(EditChipSize)
-            .clip(CircleShape)
-            .background(if (enabled) palette.background else palette.card)
-            .border(1.dp, palette.line, CircleShape)
-            .clickable(
-                enabled = enabled,
-                interactionSource = remember { MutableInteractionSource() },
-                indication = null,
-                onClick = onClick
-            ),
-        contentAlignment = Alignment.Center
-    ) {
-        Text(
-            text = label,
-            color = if (enabled) palette.textMain else palette.textSub,
-            fontSize = 11.sp,
-            fontWeight = FontWeight.Bold
-        )
     }
 }
 
@@ -909,3 +841,294 @@ internal fun textFieldColors(palette: KudoPalette) = TextFieldDefaults.colors(
     unfocusedTextColor = palette.textMain,
     disabledTextColor = palette.textSub
 )
+
+@Composable
+private fun DeadlinePanel(
+    palette: KudoPalette,
+    dueDate: LocalDate?,
+    hasCustomDueTime: Boolean,
+    customDueTime: LocalTime,
+    onPickDate: () -> Unit,
+    onClearDate: () -> Unit,
+    onPickCustomTime: () -> Unit,
+    onResetTime: () -> Unit
+) {
+    val hasDeadline = dueDate != null
+    val dueTime = if (hasCustomDueTime) customDueTime else DefaultDueTime
+    val summary = when {
+        !hasDeadline -> "No deadline"
+        else -> "${dueDate?.format(DeadlineDateFormatter).orEmpty()} at ${dueTime.format(DeadlineTimeFormatter)}"
+    }
+    val detail = when {
+        !hasDeadline -> "Pick a date. If you skip time, the reminder stays at 09:00."
+        hasCustomDueTime -> "Custom time"
+        else -> "Default time"
+    }
+
+    Column(
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        CompactEditLabel(text = "Deadline", palette = palette)
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(18.dp))
+                .background(palette.background)
+                .border(1.dp, palette.line, RoundedCornerShape(18.dp))
+                .padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = summary,
+                        color = palette.textMain,
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = detail,
+                        color = palette.textSub,
+                        fontSize = 12.sp
+                    )
+                }
+                if (hasDeadline) {
+                    TextButton(onClick = onClearDate) {
+                        Text(
+                            text = "Clear",
+                            color = palette.orange,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
+                }
+            }
+
+            DeadlineRowButton(
+                label = "Date",
+                value = dueDate?.format(DeadlineDateFormatter) ?: "Choose",
+                hint = if (hasDeadline) "Tap to change" else "Tap to set",
+                palette = palette,
+                onClick = onPickDate
+            )
+
+            if (hasDeadline) {
+                DeadlineRowButton(
+                    label = "Time",
+                    value = dueTime.format(DeadlineTimeFormatter),
+                    hint = if (hasCustomDueTime) "Tap to change" else "Optional. Defaults to 09:00",
+                    palette = palette,
+                    onClick = onPickCustomTime
+                )
+            }
+
+            if (hasDeadline && hasCustomDueTime) {
+                TextButton(
+                    onClick = onResetTime,
+                    modifier = Modifier.align(Alignment.End)
+                ) {
+                    Text(
+                        text = "Use default 09:00",
+                        color = palette.textSub,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun DeadlineRowButton(
+    label: String,
+    value: String,
+    hint: String,
+    palette: KudoPalette,
+    onClick: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(14.dp))
+            .background(palette.card)
+            .border(1.dp, palette.line, RoundedCornerShape(14.dp))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 14.dp, vertical = 12.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = label,
+                color = palette.textSub,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 0.4.sp
+            )
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                text = value,
+                color = palette.textMain,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.SemiBold
+            )
+        }
+        Spacer(modifier = Modifier.width(12.dp))
+        Text(
+            text = hint,
+            color = palette.textSub,
+            fontSize = 12.sp,
+            textAlign = TextAlign.End
+        )
+    }
+}
+
+@Composable
+private fun NotificationPermissionsSection(palette: KudoPalette) {
+    val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
+
+    var canScheduleExact by remember {
+        mutableStateOf(
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                context.getSystemService(AlarmManager::class.java)?.canScheduleExactAlarms() ?: true
+            } else true
+        )
+    }
+    var isIgnoringBatteryOpts by remember {
+        mutableStateOf(
+            context.getSystemService(PowerManager::class.java)
+                ?.isIgnoringBatteryOptimizations(context.packageName) ?: true
+        )
+    }
+
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                canScheduleExact = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                    context.getSystemService(AlarmManager::class.java)?.canScheduleExactAlarms() ?: true
+                } else true
+                isIgnoringBatteryOpts = context.getSystemService(PowerManager::class.java)
+                    ?.isIgnoringBatteryOptimizations(context.packageName) ?: true
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
+    val showExactAlarm = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
+    if ((!showExactAlarm || canScheduleExact) && isIgnoringBatteryOpts) return
+
+    Text(
+        text = "Reminders",
+        color = palette.textMain,
+        fontSize = 14.sp,
+        fontWeight = FontWeight.SemiBold,
+        modifier = Modifier.padding(bottom = 12.dp)
+    )
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        if (showExactAlarm) {
+            NotificationPermRow(
+                title = "Exact Alarms",
+                ok = canScheduleExact,
+                palette = palette,
+                onClick = {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                        context.startActivity(
+                            Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM).apply {
+                                data = Uri.parse("package:${context.packageName}")
+                            }
+                        )
+                    }
+                }
+            )
+        }
+        if (!isIgnoringBatteryOpts) {
+            NotificationPermRow(
+                title = "Battery Optimization",
+                ok = false,
+                palette = palette,
+                onClick = {
+                    context.startActivity(
+                        Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
+                            data = Uri.parse("package:${context.packageName}")
+                        }
+                    )
+                }
+            )
+        }
+        Text(
+            text = "On Vivo: also enable Auto-start and set Battery Usage to Unrestricted in your phone manager.",
+            color = palette.textSub,
+            fontSize = 11.sp,
+            modifier = Modifier.padding(horizontal = 4.dp)
+        )
+    }
+}
+
+@Composable
+private fun NotificationPermRow(
+    title: String,
+    ok: Boolean,
+    palette: KudoPalette,
+    onClick: () -> Unit
+) {
+    val haptics = rememberKudoHaptics()
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(palette.background)
+            .border(1.dp, palette.line, RoundedCornerShape(12.dp))
+            .then(
+                if (!ok) Modifier.clickable {
+                    haptics.vibrate(HapticTickMs)
+                    onClick()
+                } else Modifier
+            )
+            .padding(horizontal = 16.dp, vertical = 14.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = title,
+            color = palette.textMain,
+            fontSize = 14.sp,
+            fontWeight = FontWeight.Medium,
+            modifier = Modifier.weight(1f)
+        )
+        Spacer(modifier = Modifier.width(12.dp))
+        Text(
+            text = if (ok) "OK" else "Fix →",
+            color = if (ok) palette.green else palette.orange,
+            fontSize = 11.sp,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier
+                .clip(RoundedCornerShape(999.dp))
+                .background(if (ok) palette.greenBg else palette.orangeBg)
+                .border(1.dp, palette.line, RoundedCornerShape(999.dp))
+                .padding(horizontal = 10.dp, vertical = 6.dp)
+        )
+    }
+}
+
+private fun resolveDueAtEpochMillis(
+    date: LocalDate,
+    customTime: LocalTime?
+): Long {
+    return LocalDateTime.of(date, customTime ?: DefaultDueTime)
+        .atZone(AppZoneId)
+        .toInstant()
+        .toEpochMilli()
+}
+
+private val DeadlineDateFormatter: DateTimeFormatter =
+    DateTimeFormatter.ofPattern("EEEE, MMM d", Locale.getDefault())
+
+private val DeadlineTimeFormatter: DateTimeFormatter =
+    DateTimeFormatter.ofPattern("H:mm", Locale.getDefault())
+
+private val DefaultDueTime: LocalTime = LocalTime.of(9, 0)
