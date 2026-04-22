@@ -8,7 +8,7 @@ import org.junit.Test
 class KudoReducerSubtaskTest {
 
     @Test
-    fun updateTask_splitsRewardByDifficultyWeight() {
+    fun updateTask_splitsRewardEqually() {
         val state = KudoState(
             tasks = listOf(
                 KudoTask(
@@ -27,14 +27,45 @@ class KudoReducerSubtaskTest {
             value = 12,
             dueAtEpochMillis = null,
             subtaskDrafts = listOf(
-                KudoSubtaskDraft("Plan", KudoSubtask.DIFFICULTY_SMALL),
-                KudoSubtaskDraft("Build", KudoSubtask.DIFFICULTY_MEDIUM),
-                KudoSubtaskDraft("Ship", KudoSubtask.DIFFICULTY_LARGE)
+                KudoSubtaskDraft("Plan"),
+                KudoSubtaskDraft("Build"),
+                KudoSubtaskDraft("Ship")
             ),
             now = 100L
         )
 
-        assertEquals(listOf(2, 4, 6), updated.tasks.first().subtasks.map(KudoSubtask::valAmount))
+        assertEquals(listOf(4, 4, 4), updated.tasks.first().subtasks.map(KudoSubtask::valAmount))
+    }
+
+    @Test
+    fun updateTask_splitsRewardWithRemainder() {
+        val state = KudoState(
+            tasks = listOf(
+                KudoTask(
+                    id = 1L,
+                    title = "Launch",
+                    valAmount = 10,
+                    type = KudoState.TYPE_TASK
+                )
+            )
+        )
+
+        val updated = KudoReducer.updateTask(
+            state = state,
+            id = 1L,
+            title = "Launch",
+            value = 10,
+            dueAtEpochMillis = null,
+            subtaskDrafts = listOf(
+                KudoSubtaskDraft("Plan"),
+                KudoSubtaskDraft("Build"),
+                KudoSubtaskDraft("Ship")
+            ),
+            now = 100L
+        )
+
+        // 10 / 3 = 3 remainder 1 → [4, 3, 3]
+        assertEquals(listOf(4, 3, 3), updated.tasks.first().subtasks.map(KudoSubtask::valAmount))
     }
 
     @Test
@@ -49,9 +80,9 @@ class KudoReducerSubtaskTest {
         )
 
         val updatedTask = completed.tasks.first()
-        assertEquals(2, completed.coins)
+        assertEquals(4, completed.coins)
         assertEquals(1, updatedTask.completedSubtaskCount)
-        assertEquals(10, updatedTask.remainingValue)
+        assertEquals(8, updatedTask.remainingValue)
         assertTrue(updatedTask.subtasks.first().isCompleted)
     }
 
@@ -69,7 +100,7 @@ class KudoReducerSubtaskTest {
 
         assertEquals(12, finished.coins)
         assertTrue(finished.tasks.isEmpty())
-        assertEquals(10, finished.logs.first().baseValue)
+        assertEquals(8, finished.logs.first().baseValue)
     }
 
     @Test
@@ -107,7 +138,7 @@ class KudoReducerSubtaskTest {
             value = 99,
             dueAtEpochMillis = 5_000L,
             subtaskDrafts = listOf(
-                KudoSubtaskDraft("Different", KudoSubtask.DIFFICULTY_LARGE)
+                KudoSubtaskDraft("Different")
             ),
             now = 300L
         )
@@ -117,7 +148,7 @@ class KudoReducerSubtaskTest {
         assertEquals(12, task.valAmount)
         assertEquals(5_000L, task.dueAtEpochMillis)
         assertEquals(listOf("Plan", "Build", "Ship"), task.subtasks.map(KudoSubtask::title))
-        assertEquals(listOf(2, 4, 6), task.subtasks.map(KudoSubtask::valAmount))
+        assertEquals(listOf(4, 4, 4), task.subtasks.map(KudoSubtask::valAmount))
         assertTrue(task.subtasks.first().isCompleted)
     }
 
@@ -138,13 +169,13 @@ class KudoReducerSubtaskTest {
             value = 12,
             dueAtEpochMillis = null,
             subtaskDrafts = listOf(
-                KudoSubtaskDraft("Plan", KudoSubtask.DIFFICULTY_SMALL),
-                KudoSubtaskDraft("Build", KudoSubtask.DIFFICULTY_MEDIUM),
-                KudoSubtaskDraft("Ship", KudoSubtask.DIFFICULTY_LARGE)
+                KudoSubtaskDraft("Plan"),
+                KudoSubtaskDraft("Build"),
+                KudoSubtaskDraft("Ship")
             ),
             now = 100L
         )
-        assertEquals(listOf(2, 4, 6), updated.tasks.first().subtasks.map(KudoSubtask::valAmount))
+        assertEquals(listOf(4, 4, 4), updated.tasks.first().subtasks.map(KudoSubtask::valAmount))
         return updated
     }
 }

@@ -35,14 +35,13 @@ class KudoViewModel(application: Application) : AndroidViewModel(application) {
 
     private data class KudoViewState(
         val currentView: String = VIEW_TASKS,
-        val taskCreationTarget: TaskCreationTarget = TaskCreationTarget.INBOX,
+        val taskCreationTarget: TaskCreationTarget = TaskCreationTarget.TASK,
         val storeMode: Int = KudoState.STORE_ONCE,
         val habitsCollapsed: Boolean = false,
         val habitJiggleMode: Boolean = false,
         val settingsVisible: Boolean = false,
         val helpVisible: Boolean = false,
         val editingTarget: EditingTarget? = null,
-        val pendingMoveTaskId: Long? = null,
         val recentTaskInsertId: Long? = null,
         val recentStoreInsertId: Long? = null,
         val showUndoBanner: Boolean = false
@@ -65,7 +64,6 @@ class KudoViewModel(application: Application) : AndroidViewModel(application) {
             isSettingsVisible = view.settingsVisible,
             isHelpVisible = view.helpVisible,
             editingTarget = view.editingTarget,
-            pendingMoveTaskId = view.pendingMoveTaskId,
             recentTaskInsertId = view.recentTaskInsertId,
             recentStoreInsertId = view.recentStoreInsertId,
             showUndoBanner = view.showUndoBanner
@@ -85,17 +83,14 @@ class KudoViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun setListMode(mode: String) {
-        launchStateUpdate { it.copy(listMode = mode) }
-    }
-
     fun cycleTaskCreationTarget() {
         viewState.update {
-            it.copy(taskCreationTarget = when (it.taskCreationTarget) {
-                TaskCreationTarget.INBOX,
-                TaskCreationTarget.FOCUS -> TaskCreationTarget.HABIT
-                TaskCreationTarget.HABIT -> TaskCreationTarget.INBOX
-            })
+            it.copy(
+                taskCreationTarget = when (it.taskCreationTarget) {
+                    TaskCreationTarget.TASK -> TaskCreationTarget.HABIT
+                    TaskCreationTarget.HABIT -> TaskCreationTarget.TASK
+                }
+            )
         }
     }
 
@@ -144,12 +139,7 @@ class KudoViewModel(application: Application) : AndroidViewModel(application) {
                         value = parsedValue,
                         type = when (current.taskCreationTarget) {
                             TaskCreationTarget.HABIT -> KudoState.TYPE_HABIT
-                            else -> KudoState.TYPE_TASK
-                        },
-                        list = when (current.taskCreationTarget) {
-                            TaskCreationTarget.HABIT -> KudoState.LIST_FOCUS
-                            TaskCreationTarget.FOCUS -> KudoState.LIST_FOCUS
-                            TaskCreationTarget.INBOX -> KudoState.LIST_INBOX
+                            TaskCreationTarget.TASK -> KudoState.TYPE_TASK
                         },
                         now = createdId
                     )
@@ -207,26 +197,6 @@ class KudoViewModel(application: Application) : AndroidViewModel(application) {
         launchStateUpdate { state -> KudoReducer.completeSubtask(state, taskId, subtaskId) }
     }
 
-    fun moveTaskFromGesture(id: Long): Boolean {
-        val current = uiState.value.data
-        val result = KudoReducer.moveTask(current, id)
-        if (result.requiresValue) {
-            val suggested = suggestedTaskValue(current.recentVals)
-            val finalResult = KudoReducer.moveTask(current, id, assignedValueForInboxToFocus = suggested)
-            launchSaveState(finalResult.state)
-            return true
-        }
-
-        launchSaveState(result.state)
-        return true
-    }
-
-    private fun suggestedTaskValue(recentVals: List<Int>): Int {
-        if (recentVals.isEmpty()) return 10
-        val sorted = recentVals.sorted()
-        return sorted[sorted.size / 2]
-    }
-
     fun purchaseItemFromGesture(id: Long): Boolean {
         val current = uiState.value.data
         val item = current.store.firstOrNull { it.id == id } ?: return false
@@ -253,7 +223,7 @@ class KudoViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun closeEdit() {
-        viewState.update { it.copy(editingTarget = null, pendingMoveTaskId = null) }
+        viewState.update { it.copy(editingTarget = null) }
     }
 
     fun saveEditing(
@@ -263,7 +233,6 @@ class KudoViewModel(application: Application) : AndroidViewModel(application) {
         subtaskDrafts: List<KudoSubtaskDraft>?
     ) {
         val target = viewState.value.editingTarget ?: return
-        val pendingTaskId = viewState.value.pendingMoveTaskId
         val sanitizedTitle = title.trim()
         val parsedValue = parseEditValue(valueInput)
         val sanitizedSubtasks = subtaskDrafts?.mapNotNull { draft ->
@@ -273,44 +242,25 @@ class KudoViewModel(application: Application) : AndroidViewModel(application) {
 
         launchAsync {
             repository.updateState { state ->
-                if (pendingTaskId != null) {
-                    val task = state.tasks.firstOrNull { it.id == pendingTaskId } ?: return@updateState state
-                    val updatedTitle = sanitizedTitle.ifBlank { task.title }
-                    val updatedValue = if (valueInput.isBlank()) 10 else parsedValue
-                    KudoReducer.moveTask(
-                        state = KudoReducer.updateTask(
-                            state = state,
-                            id = pendingTaskId,
-                            title = updatedTitle,
-                            value = updatedValue,
-                            dueAtEpochMillis = dueAtEpochMillis,
-                            subtaskDrafts = sanitizedSubtasks,
-                            now = editTimestamp
-                        ),
-                        id = pendingTaskId,
-                        assignedValueForInboxToFocus = updatedValue
-                    ).state
-                } else {
-                    when (target.kind) {
-                        KIND_TASK -> KudoReducer.updateTask(
-                            state = state,
-                            id = target.id,
-                            title = sanitizedTitle,
-                            value = parsedValue,
-                            dueAtEpochMillis = dueAtEpochMillis,
-                            subtaskDrafts = sanitizedSubtasks,
-                            now = editTimestamp
-                        )
+                when (target.kind) {
+                    KIND_TASK -> KudoReducer.updateTask(
+                        state = state,
+                        id = target.id,
+                        title = sanitizedTitle,
+                        value = parsedValue,
+                        dueAtEpochMillis = dueAtEpochMillis,
+                        subtaskDrafts = sanitizedSubtasks,
+                        now = editTimestamp
+                    )
 
-                        KIND_STORE -> KudoReducer.updateStoreItem(
-                            state = state,
-                            id = target.id,
-                            title = sanitizedTitle,
-                            cost = parsedValue
-                        )
+                    KIND_STORE -> KudoReducer.updateStoreItem(
+                        state = state,
+                        id = target.id,
+                        title = sanitizedTitle,
+                        cost = parsedValue
+                    )
 
-                        else -> state
-                    }
+                    else -> state
                 }
             }
             closeEdit()
@@ -355,25 +305,17 @@ class KudoViewModel(application: Application) : AndroidViewModel(application) {
         viewState.update { it.copy(habitJiggleMode = false) }
     }
 
-    fun reorderCurrentTaskList(orderedIds: List<Long>) {
-        val listMode = uiState.value.data.listMode
+    fun reorderTasks(orderedIds: List<Long>) {
         launchStateUpdate { state ->
             KudoReducer.setTaskSortMode(
-                state = KudoReducer.reorderTasks(state, listMode, orderedIds),
-                listMode = listMode,
+                state = KudoReducer.reorderTasks(state, orderedIds),
                 sortMode = KudoState.TASK_SORT_MANUAL
             )
         }
     }
 
-    fun resetTaskSortMode(listMode: String) {
-        launchStateUpdate { state ->
-            KudoReducer.setTaskSortMode(
-                state = state,
-                listMode = listMode,
-                sortMode = KudoState.TASK_SORT_AUTO_DUE
-            )
-        }
+    fun resetTaskSortMode() {
+        launchStateUpdate { state -> KudoReducer.resetTaskOrder(state) }
     }
 
     fun reorderHabits(orderedIds: List<Long>) {
@@ -446,14 +388,13 @@ data class KudoUiState(
     val data: KudoState = KudoState(),
     val theme: String = KudoStateRepository.THEME_SYSTEM,
     val currentView: String = KudoViewModel.VIEW_TASKS,
-    val taskCreationTarget: TaskCreationTarget = TaskCreationTarget.INBOX,
+    val taskCreationTarget: TaskCreationTarget = TaskCreationTarget.TASK,
     val storeMode: Int = KudoState.STORE_ONCE,
     val habitsCollapsed: Boolean = false,
     val isHabitJiggleMode: Boolean = false,
     val isSettingsVisible: Boolean = false,
     val isHelpVisible: Boolean = false,
     val editingTarget: EditingTarget? = null,
-    val pendingMoveTaskId: Long? = null,
     val recentTaskInsertId: Long? = null,
     val recentStoreInsertId: Long? = null,
     val showUndoBanner: Boolean = false
@@ -466,7 +407,6 @@ data class EditingTarget(
 )
 
 enum class TaskCreationTarget {
-    INBOX,
-    FOCUS,
+    TASK,
     HABIT
 }

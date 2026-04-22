@@ -10,21 +10,9 @@ data class KudoState(
     val logs: List<KudoLogEntry> = emptyList(),
     val recentVals: List<Int> = emptyList(),
     val multiplier: Float = 1.0f,
-    val listMode: String = LIST_FOCUS,
-    val focusSortMode: Int = TASK_SORT_AUTO_DUE,
-    val inboxSortMode: Int = TASK_SORT_AUTO_DUE
+    val taskSortMode: Int = TASK_SORT_AUTO_DUE
 ) {
-    fun taskSortModeFor(list: String): Int {
-        return when (list) {
-            LIST_INBOX -> inboxSortMode
-            else -> focusSortMode
-        }
-    }
-
     companion object {
-        const val LIST_FOCUS = "focus"
-        const val LIST_INBOX = "inbox"
-
         const val TYPE_TASK = 0
         const val TYPE_HABIT = 1
 
@@ -44,7 +32,6 @@ data class KudoTask(
     val type: Int,
     val count: Int = 0,
     val last: Long = 0L,
-    val list: String = KudoState.LIST_FOCUS,
     val order: Long = id,
     val dueAtEpochMillis: Long? = null,
     val subtasks: List<KudoSubtask> = emptyList()
@@ -99,7 +86,6 @@ data class KudoLogItemData(
     val type: Int = 0,
     val count: Int = 0,
     val last: Long = 0L,
-    val list: String = KudoState.LIST_FOCUS,
     val order: Long = id,
     val dueAtEpochMillis: Long? = null,
     val subtasks: List<KudoSubtask> = emptyList()
@@ -111,7 +97,6 @@ data class KudoLogItemData(
         type = type,
         count = count,
         last = last,
-        list = list,
         order = order,
         dueAtEpochMillis = dueAtEpochMillis,
         subtasks = subtasks
@@ -132,7 +117,6 @@ data class KudoLogItemData(
             type = task.type,
             count = task.count,
             last = task.last,
-            list = task.list,
             order = task.order,
             dueAtEpochMillis = task.dueAtEpochMillis,
             subtasks = task.subtasks

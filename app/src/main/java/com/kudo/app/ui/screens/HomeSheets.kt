@@ -408,13 +408,13 @@ private fun HelpContent(
         )
         Text(text = "📌 任务分类", color = palette.textMain, fontWeight = FontWeight.Bold)
         Text(
-            text = "Habits：重复进行的日常项，每次点击完成即可充能并获得金币。\nFocus：当前优先处理的事项。\nInbox：稍后再做的待办，左滑可流转至 Focus。",
+            text = "Habits：重复进行的日常项，每次点击完成即可充能并获得金币。\nTasks：有序队列，只有队首任务（高亮）可以完成。拖拽可调整顺序。",
             color = palette.textSub,
             fontSize = 13.sp
         )
         Text(text = "🖐️ 手势操作", color = palette.textMain, fontWeight = FontWeight.Bold)
         Text(
-            text = "添加：从顶部下划展开输入面板，提交后自动收起。\nHabits：点击完成，长按进入排序 / 删除模式。\nTasks：右滑完成并获得金币，左滑将 Inbox 流转至 Focus，点击可编辑标题、金币值、截止日及子任务，长按拖动排序，长按 Focus / Inbox 标签可恢复默认日期排序。\nStore：右滑消费金币购买奖励，点击编辑内容，长按排序。",
+            text = "添加：从顶部下划展开输入面板，提交后自动收起。\nHabits：点击完成，长按进入排序 / 删除模式。\nTasks：左右滑均可完成队首任务并获得金币，点击可编辑标题、金币值、截止日及子任务，长按拖动排序，长按 TASKS 标签可恢复默认日期排序。\nStore：右滑消费金币购买奖励，点击编辑内容，长按排序。",
             color = palette.textSub,
             fontSize = 13.sp
         )
@@ -456,7 +456,6 @@ internal fun EditSheet(
     val context = LocalContext.current
     val targetTask = uiState.data.tasks.firstOrNull { it.id == target.id }
     val targetStore = uiState.data.store.firstOrNull { it.id == target.id }
-    val isPendingMove = uiState.pendingMoveTaskId != null
     val isTaskEditor = target.kind == KudoViewModel.KIND_TASK && targetTask != null
     val isSubtaskLocked = targetTask?.isSubtaskStructureLocked == true
     val hasStableSubtaskViewport = isTaskEditor
@@ -466,39 +465,39 @@ internal fun EditSheet(
     val scrollState = rememberScrollState()
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
-    var title by remember(target.id, isPendingMove) {
+    var title by remember(target.id, false) {
         mutableStateOf(targetTask?.title ?: targetStore?.title.orEmpty())
     }
-    var value by remember(target.id, isPendingMove) {
+    var value by remember(target.id, false) {
         mutableStateOf(
             when {
-                isPendingMove -> ""
+                false -> ""
                 targetTask != null -> targetTask.valAmount.toString()
                 targetStore != null -> targetStore.cost.toString()
                 else -> ""
             }
         )
     }
-    val initialDueDateTime = remember(target.id, isPendingMove, targetTask?.dueAtEpochMillis) {
+    val initialDueDateTime = remember(target.id, false, targetTask?.dueAtEpochMillis) {
         targetTask?.dueAtEpochMillis?.let { Instant.ofEpochMilli(it).atZone(AppZoneId).toLocalDateTime() }
     }
-    var dueDate by remember(target.id, isPendingMove, targetTask?.dueAtEpochMillis) {
+    var dueDate by remember(target.id, false, targetTask?.dueAtEpochMillis) {
         mutableStateOf(initialDueDateTime?.toLocalDate())
     }
-    var hasCustomDueTime by remember(target.id, isPendingMove, targetTask?.dueAtEpochMillis) {
+    var hasCustomDueTime by remember(target.id, false, targetTask?.dueAtEpochMillis) {
         mutableStateOf(initialDueDateTime?.toLocalTime() != null && initialDueDateTime.toLocalTime() != DefaultDueTime)
     }
-    var customDueTime by remember(target.id, isPendingMove, targetTask?.dueAtEpochMillis) {
+    var customDueTime by remember(target.id, false, targetTask?.dueAtEpochMillis) {
         mutableStateOf(initialDueDateTime?.toLocalTime() ?: DefaultDueTime)
     }
-    var subtaskDrafts by remember(target.id, isPendingMove, targetTask?.subtasks) {
+    var subtaskDrafts by remember(target.id, false, targetTask?.subtasks) {
         mutableStateOf(
             targetTask?.subtasks?.map { subtask ->
                 KudoSubtaskDraft(title = subtask.title)
             } ?: emptyList()
         )
     }
-    var newSubtaskTitle by remember(target.id, isPendingMove) {
+    var newSubtaskTitle by remember(target.id, false) {
         mutableStateOf("")
     }
 
@@ -523,7 +522,7 @@ internal fun EditSheet(
                 .padding(horizontal = 20.dp, vertical = 8.dp)
         ) {
             Text(
-                text = if (isPendingMove) "Set Value & Move" else "Edit Item",
+                text = "Edit Item",
                 color = palette.textMain,
                 fontSize = 20.sp,
                 fontWeight = FontWeight.Bold
@@ -555,7 +554,7 @@ internal fun EditSheet(
                             .defaultMinSize(minHeight = EditFieldMinHeight),
                         placeholder = {
                             Text(
-                                text = if (isPendingMove) "Set for Focus" else "0",
+                                text = "0",
                                 color = palette.textSub
                             )
                         },
@@ -697,7 +696,7 @@ internal fun EditSheet(
                         .defaultMinSize(minHeight = EditFieldMinHeight),
                     placeholder = {
                         Text(
-                            text = if (isPendingMove) "Set value for Focus" else "0",
+                            text = "0",
                             color = palette.textSub
                         )
                     },

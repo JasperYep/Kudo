@@ -4,29 +4,22 @@ import kotlin.math.floor
 
 object KudoReducer {
 
-    data class MoveTaskResult(
-        val state: KudoState,
-        val requiresValue: Boolean = false
-    )
-
     fun addTask(
         state: KudoState,
         title: String,
         value: Int,
         type: Int,
-        list: String,
         now: Long = System.currentTimeMillis()
     ): KudoState {
-        val resolvedList = if (type == KudoState.TYPE_HABIT) KudoState.LIST_FOCUS else list
         val nextOrder = if (
             type == KudoState.TYPE_TASK &&
-            state.taskSortModeFor(resolvedList) == KudoState.TASK_SORT_MANUAL
+            state.taskSortMode == KudoState.TASK_SORT_MANUAL
         ) {
             state.tasks
                 .asSequence()
-                .filter { it.type == KudoState.TYPE_TASK && it.list == resolvedList }
-                .minOfOrNull(KudoTask::order)
-                ?.minus(1L)
+                .filter { it.type == KudoState.TYPE_TASK }
+                .maxOfOrNull(KudoTask::order)
+                ?.plus(1L)
                 ?: 0L
         } else {
             now
@@ -38,11 +31,10 @@ object KudoReducer {
             type = type,
             count = 0,
             last = 0L,
-            list = resolvedList,
             order = nextOrder
         )
         return KudoStateJson.sanitize(
-            state.copy(tasks = listOf(item) + state.tasks)
+            state.copy(tasks = state.tasks + listOf(item))
         )
     }
 
@@ -60,47 +52,6 @@ object KudoReducer {
             type = type
         )
         return state.copy(store = listOf(item) + state.store)
-    }
-
-    fun moveTask(
-        state: KudoState,
-        id: Long,
-        assignedValueForInboxToFocus: Int? = null
-    ): MoveTaskResult {
-        val task = state.tasks.firstOrNull { it.id == id } ?: return MoveTaskResult(state)
-
-        if (task.list == KudoState.LIST_INBOX) {
-            if (task.valAmount == 0 && assignedValueForInboxToFocus == null) {
-                return MoveTaskResult(state = state, requiresValue = true)
-            }
-
-            val destinationList = KudoState.LIST_FOCUS
-            val updated = state.tasks.map { current ->
-                if (current.id != id) {
-                    current
-                } else {
-                    current.copy(
-                        valAmount = assignedValueForInboxToFocus ?: current.valAmount,
-                        list = destinationList,
-                        order = nextTaskOrderForList(state, destinationList, current.order)
-                    )
-                }
-            }
-            return MoveTaskResult(state.copy(tasks = updated))
-        }
-
-        val destinationList = KudoState.LIST_INBOX
-        val updated = state.tasks.map { current ->
-            if (current.id == id) {
-                current.copy(
-                    list = destinationList,
-                    order = nextTaskOrderForList(state, destinationList, current.order)
-                )
-            } else {
-                current
-            }
-        }
-        return MoveTaskResult(state.copy(tasks = updated))
     }
 
     fun completeTask(state: KudoState, id: Long, now: Long = System.currentTimeMillis()): KudoState {
@@ -213,7 +164,7 @@ object KudoReducer {
         val item = state.store.firstOrNull { it.id == id } ?: return state
         if (state.coins < item.cost) return state
 
-        val nextState = state.copy(
+        return state.copy(
             coins = state.coins - item.cost,
             store = if (item.type == KudoState.STORE_ONCE) {
                 state.store.filterNot { it.id == id }
@@ -230,7 +181,6 @@ object KudoReducer {
                 )
             ) + state.logs
         )
-        return nextState
     }
 
     fun undoLog(state: KudoState, index: Int): KudoState {
@@ -310,15 +260,12 @@ object KudoReducer {
         )
     }
 
-    fun setTaskSortMode(state: KudoState, listMode: String, sortMode: Int): KudoState {
-        val sanitizedSortMode = when (sortMode) {
+    fun setTaskSortMode(state: KudoState, sortMode: Int): KudoState {
+        val sanitized = when (sortMode) {
             KudoState.TASK_SORT_MANUAL -> KudoState.TASK_SORT_MANUAL
             else -> KudoState.TASK_SORT_AUTO_DUE
         }
-        return when (listMode) {
-            KudoState.LIST_INBOX -> state.copy(inboxSortMode = sanitizedSortMode)
-            else -> state.copy(focusSortMode = sanitizedSortMode)
-        }
+        return state.copy(taskSortMode = sanitized)
     }
 
     fun updateStoreItem(state: KudoState, id: Long, title: String, cost: Int): KudoState {
@@ -353,19 +300,19 @@ object KudoReducer {
         }
     }
 
-    fun reorderTasks(state: KudoState, listMode: String, orderedIds: List<Long>): KudoState {
+    fun reorderTasks(state: KudoState, orderedIds: List<Long>): KudoState {
         return reorderTaskSubset(
             state = state,
             orderedIds = orderedIds
         ) { task ->
-            task.type == KudoState.TYPE_TASK && task.list == listMode
+            task.type == KudoState.TYPE_TASK
         }
     }
 
-    fun resetTaskOrder(state: KudoState, listMode: String): KudoState {
+    fun resetTaskOrder(state: KudoState): KudoState {
         val orderedIds = state.tasks
             .asSequence()
-            .filter { it.type == KudoState.TYPE_TASK && it.list == listMode }
+            .filter { it.type == KudoState.TYPE_TASK }
             .sortedWith(
                 compareBy<KudoTask>(
                     { it.dueAtEpochMillis == null },
@@ -378,8 +325,7 @@ object KudoReducer {
         if (orderedIds.isEmpty()) return state
 
         return setTaskSortMode(
-            state = reorderTasks(state, listMode, orderedIds),
-            listMode = listMode,
+            state = reorderTasks(state, orderedIds),
             sortMode = KudoState.TASK_SORT_MANUAL
         )
     }
@@ -437,31 +383,11 @@ object KudoReducer {
         )
     }
 
-    private fun nextTaskOrderForList(
-        state: KudoState,
-        list: String,
-        fallback: Long
-    ): Long {
-        if (state.taskSortModeFor(list) != KudoState.TASK_SORT_MANUAL) {
-            return fallback
-        }
-        return state.tasks
-            .asSequence()
-            .filter { it.type == KudoState.TYPE_TASK && it.list == list }
-            .minOfOrNull(KudoTask::order)
-            ?.minus(1L)
-            ?: 0L
-    }
-
     private fun restoreTaskSnapshot(tasks: List<KudoTask>, snapshot: KudoTask): List<KudoTask> {
         val exists = tasks.any { it.id == snapshot.id }
         return if (exists) {
             tasks.map { task ->
-                if (task.id == snapshot.id) {
-                    snapshot
-                } else {
-                    task
-                }
+                if (task.id == snapshot.id) snapshot else task
             }
         } else {
             tasks + snapshot

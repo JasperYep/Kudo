@@ -100,7 +100,6 @@ import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.HelpOutline
 import androidx.compose.material.icons.rounded.KeyboardArrowDown
 import androidx.compose.material.icons.rounded.LightMode
-import androidx.compose.material.icons.rounded.MoveDown
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.ShoppingCart
 import androidx.compose.material.icons.rounded.Upload
@@ -239,13 +238,7 @@ fun HomeScreen(
     var pendingImportUri by remember { mutableStateOf<Uri?>(null) }
     var isFileTransferInProgress by remember { mutableStateOf(false) }
     var activeComposerRevealProgress by remember { mutableFloatStateOf(0f) }
-    val focusTasksListState = rememberLazyListState()
-    val inboxTasksListState = rememberLazyListState()
-    val tasksListState = if (uiState.data.listMode == KudoState.LIST_INBOX) {
-        inboxTasksListState
-    } else {
-        focusTasksListState
-    }
+    val tasksListState = rememberLazyListState()
     val storeListState = rememberLazyListState()
     val logListState = rememberLazyListState()
     LaunchedEffect(uiState.currentView) {
@@ -379,16 +372,14 @@ fun HomeScreen(
                             userScrollEnabled = pageScrollEnabled,
                             onGestureLockChange = onGestureLockChange,
                             onToggleHabits = viewModel::toggleHabitsCollapsed,
-                            onSetListMode = viewModel::setListMode,
                             onResetTaskSortMode = viewModel::resetTaskSortMode,
                             onExitHabitJiggle = viewModel::exitHabitJiggleMode,
                             onEnterHabitJiggle = viewModel::enterHabitJiggleMode,
                             onDeleteHabit = viewModel::deleteTaskItem,
-                            onReorderTask = viewModel::reorderCurrentTaskList,
+                            onReorderTask = viewModel::reorderTasks,
                             onReorderHabits = viewModel::reorderHabits,
                             onCompleteTask = viewModel::completeTask,
                             onCompleteSubtask = viewModel::completeSubtask,
-                            onMoveTaskGesture = viewModel::moveTaskFromGesture,
                             onEditTask = viewModel::openEditTask,
                             onCompleteHabit = viewModel::completeHabit,
                             listState = tasksListState
@@ -503,9 +494,7 @@ fun HomeScreen(
         )
     }
 
-    val editTarget = uiState.pendingMoveTaskId?.let {
-        EditingTarget(KudoViewModel.KIND_TASK, it)
-    } ?: uiState.editingTarget
+    val editTarget = uiState.editingTarget
 
     if (editTarget != null) {
         EditSheet(
@@ -1091,15 +1080,13 @@ private fun DashboardCard(
     val modeText = when {
         uiState.currentView == KudoViewModel.VIEW_STORE && uiState.storeMode == KudoState.STORE_INFINITE -> "INFIN"
         uiState.currentView == KudoViewModel.VIEW_STORE -> "ONCE"
-        uiState.taskCreationTarget == TaskCreationTarget.INBOX -> "INBOX"
-        uiState.taskCreationTarget == TaskCreationTarget.FOCUS -> "FOCUS"
-        else -> "HABIT"
+        uiState.taskCreationTarget == TaskCreationTarget.HABIT -> "HABIT"
+        else -> "TASK"
     }
     val modeColor = when {
         uiState.currentView == KudoViewModel.VIEW_STORE -> palette.orange
-        uiState.taskCreationTarget == TaskCreationTarget.INBOX -> palette.blue
-        uiState.taskCreationTarget == TaskCreationTarget.FOCUS -> palette.green
-        else -> palette.gold
+        uiState.taskCreationTarget == TaskCreationTarget.HABIT -> palette.gold
+        else -> palette.green
     }
     val valueColor = when {
         uiState.currentView == KudoViewModel.VIEW_STORE -> palette.orange
@@ -1249,8 +1236,7 @@ private fun TasksPage(
     userScrollEnabled: Boolean = true,
     onGestureLockChange: (Boolean) -> Unit,
     onToggleHabits: () -> Unit,
-    onSetListMode: (String) -> Unit,
-    onResetTaskSortMode: (String) -> Unit,
+    onResetTaskSortMode: () -> Unit,
     onExitHabitJiggle: () -> Unit,
     onEnterHabitJiggle: () -> Unit,
     onDeleteHabit: (Long) -> Unit,
@@ -1258,51 +1244,30 @@ private fun TasksPage(
     onReorderHabits: (List<Long>) -> Unit,
     onCompleteTask: (Long) -> Unit,
     onCompleteSubtask: (Long, Long) -> Unit,
-    onMoveTaskGesture: (Long) -> Boolean,
     onEditTask: (Long) -> Unit,
     onCompleteHabit: (Long) -> Unit,
     listState: LazyListState
 ) {
     val haptics = rememberKudoHaptics()
     var isHabitGestureLocked by remember { mutableStateOf(false) }
-    var isTaskSwipeGestureLocked by remember(uiState.data.listMode) { mutableStateOf(false) }
-    var isTaskLongPressGestureLocked by remember(uiState.data.listMode) { mutableStateOf(false) }
-    var isTaskTabGestureLocked by remember { mutableStateOf(false) }
+    var isTaskSwipeGestureLocked by remember { mutableStateOf(false) }
+    var isTaskLongPressGestureLocked by remember { mutableStateOf(false) }
     val habits = remember(uiState.data.tasks) {
         uiState.data.tasks.filter { it.type == KudoState.TYPE_HABIT }
     }
     var localHabits by remember { mutableStateOf(habits) }
-    val currentSortMode = uiState.data.taskSortModeFor(uiState.data.listMode)
-    val focusTaskCount = remember(uiState.data.tasks) {
-        uiState.data.tasks.count {
-            it.type == KudoState.TYPE_TASK && it.list == KudoState.LIST_FOCUS
-        }
-    }
-    val inboxTaskCount = remember(uiState.data.tasks) {
-        uiState.data.tasks.count {
-            it.type == KudoState.TYPE_TASK && it.list == KudoState.LIST_INBOX
-        }
-    }
-    val tasks = remember(uiState.data.tasks, uiState.data.listMode, currentSortMode) {
+    val currentSortMode = uiState.data.taskSortMode
+    val tasks = remember(uiState.data.tasks, currentSortMode) {
         sortTasksForDisplay(
-            tasks = uiState.data.tasks.filter {
-                it.type == KudoState.TYPE_TASK && it.list == uiState.data.listMode
-            },
+            tasks = uiState.data.tasks.filter { it.type == KudoState.TYPE_TASK },
             sortMode = currentSortMode
         )
     }
-    val tabBalanceSpacerHeight = remember(uiState.data.listMode, focusTaskCount, inboxTaskCount) {
-        val hiddenCount = when (uiState.data.listMode) {
-            KudoState.LIST_INBOX -> (focusTaskCount - inboxTaskCount).coerceAtLeast(0)
-            else -> (inboxTaskCount - focusTaskCount).coerceAtLeast(0)
-        }
-        TaskTabBalanceRowEstimate * hiddenCount
-    }
 
-    var localTasks by remember(uiState.data.listMode) { mutableStateOf(tasks) }
-    var lastTaskSwapHapticAtMs by remember(uiState.data.listMode) { mutableStateOf(0L) }
-    val newTopTaskId = localTasks.firstOrNull()?.id?.takeIf { it == uiState.recentTaskInsertId }
-    var expandedTaskIds by rememberSaveable(uiState.data.listMode) { mutableStateOf(emptyList<Long>()) }
+    var localTasks by remember { mutableStateOf(tasks) }
+    var lastTaskSwapHapticAtMs by remember { mutableStateOf(0L) }
+    val newTopTaskId = localTasks.lastOrNull()?.id?.takeIf { it == uiState.recentTaskInsertId }
+    var expandedTaskIds by rememberSaveable { mutableStateOf(emptyList<Long>()) }
     LaunchedEffect(tasks.map(KudoTask::id)) {
         expandedTaskIds = expandedTaskIds.filter { expandedId ->
             tasks.any { it.id == expandedId && it.hasSubtasks }
@@ -1321,7 +1286,7 @@ private fun TasksPage(
     val dragCancelledAnimation = remember {
         SpringDragCancelledAnimation(stiffness = ReorderCancelAnimationStiffness)
     }
-    val state = key(uiState.data.listMode, listState) {
+    val state = key(listState) {
         rememberReorderableLazyListState(
             onMove = { from, to ->
                 val fromId = from.key as? Long
@@ -1363,8 +1328,7 @@ private fun TasksPage(
         isTaskReordering ||
             isHabitGestureLocked ||
             isTaskSwipeGestureLocked ||
-            isTaskLongPressGestureLocked ||
-            isTaskTabGestureLocked
+            isTaskLongPressGestureLocked
 
     LaunchedEffect(habits) {
         if (!isHabitGestureLocked) {
@@ -1390,7 +1354,6 @@ private fun TasksPage(
             isHabitGestureLocked = false
             isTaskSwipeGestureLocked = false
             isTaskLongPressGestureLocked = false
-            isTaskTabGestureLocked = false
             onGestureLockChange(false)
         }
     }
@@ -1449,24 +1412,19 @@ private fun TasksPage(
             }
         }
 
-        item(key = "focus_inbox_switcher") {
-            FocusInboxSwitcher(
-                currentMode = uiState.data.listMode,
+        item(key = "tasks_header") {
+            TaskQueueHeader(
+                sortMode = uiState.data.taskSortMode,
                 palette = palette,
-                onGestureLockChange = { isTaskTabGestureLocked = it },
-                onSetListMode = {
+                onLongPress = {
                     onExitHabitJiggle()
-                    onSetListMode(it)
-                },
-                onResetSortMode = {
-                    onExitHabitJiggle()
-                    onResetTaskSortMode(it)
+                    onResetTaskSortMode()
                 }
             )
         }
 
         if (tasks.isEmpty()) {
-            item(key = "empty_${uiState.data.listMode}") {
+            item(key = "empty_tasks") {
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -1481,14 +1439,12 @@ private fun TasksPage(
                             }
                         )
                 ) {
-                    EmptyState(
-                        text = "Empty ${uiState.data.listMode}",
-                        palette = palette
-                    )
+                    EmptyState(text = "No tasks", palette = palette)
                 }
             }
         } else {
             items(localTasks, key = { it.id }) { task ->
+                val isActive = localTasks.firstOrNull()?.id == task.id
                 ReorderableItem(
                     state = state,
                     key = task.id,
@@ -1499,7 +1455,7 @@ private fun TasksPage(
                             task = task,
                             palette = palette,
                             finalMultiplier = uiState.data.multiplier,
-
+                            isActive = isActive,
                             isDragging = isDragging,
                             expanded = task.id in expandedTaskIds,
                             modifier = Modifier
@@ -1512,7 +1468,7 @@ private fun TasksPage(
                                     haptics = haptics
                                 )
                                 .detectReorderAfterLongPress(state),
-                            swipeEnabled = !isDragging && !isTaskLongPressGestureLocked,
+                            swipeEnabled = isActive && !isDragging && !isTaskLongPressGestureLocked,
                             onGestureLockChange = { isTaskSwipeGestureLocked = it },
                             onComplete = {
                                 onExitHabitJiggle()
@@ -1521,10 +1477,6 @@ private fun TasksPage(
                             onCompleteSubtask = { subtaskId ->
                                 onExitHabitJiggle()
                                 onCompleteSubtask(task.id, subtaskId)
-                            },
-                            onMoveGesture = {
-                                onExitHabitJiggle()
-                                onMoveTaskGesture(task.id)
                             },
                             onToggleExpanded = {
                                 expandedTaskIds = toggleId(expandedTaskIds, task.id)
@@ -1540,7 +1492,7 @@ private fun TasksPage(
         }
 
         item(key = "tasks_bottom_spacer") {
-            Spacer(modifier = Modifier.height(tabBalanceSpacerHeight + 24.dp))
+            Spacer(modifier = Modifier.height(24.dp))
         }
     }
     if (pendingDeleteHabitId != null) {
@@ -2187,131 +2139,25 @@ private fun SectionHeader(
 }
 
 @Composable
-private fun FocusInboxSwitcher(
-    modifier: Modifier = Modifier,
-    currentMode: String,
+private fun TaskQueueHeader(
+    sortMode: Int,
     palette: KudoPalette,
-    onGestureLockChange: (Boolean) -> Unit,
-    onSetListMode: (String) -> Unit,
-    onResetSortMode: (String) -> Unit
-) {
-    val focusSelected = currentMode == KudoState.LIST_FOCUS
-    var trackWidthPx by remember { mutableFloatStateOf(1f) }
-    val thumbOffsetProgress by animateFloatAsState(
-        targetValue = if (focusSelected) 0f else 1f,
-        animationSpec = spring(
-            dampingRatio = 0.88f,
-            stiffness = 720f
-        ),
-        label = "switcherThumb"
-    )
-
-    Box(
-        modifier = modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 12.dp)
-            .clip(RoundedCornerShape(12.dp))
-            .background(palette.line)
-            .padding(2.dp)
-    ) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(32.dp)
-                .onSizeChanged { trackWidthPx = it.width.toFloat().coerceAtLeast(1f) }
-        ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxHeight()
-                    .fillMaxWidth(0.5f)
-                    .offset {
-                        IntOffset(
-                            x = ((trackWidthPx / 2f) * thumbOffsetProgress).roundToInt(),
-                            y = 0
-                        )
-                    }
-                    .clip(RoundedCornerShape(10.dp))
-                    .background(palette.card)
-            )
-        }
-        Row(
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            FocusInboxTab(
-                modifier = Modifier.weight(1f),
-                label = "Focus",
-                selected = focusSelected,
-                palette = palette,
-                onGestureLockChange = onGestureLockChange,
-                onClick = {
-                    if (!focusSelected) {
-                        onSetListMode(KudoState.LIST_FOCUS)
-                    }
-                },
-                onLongPress = {
-                    if (!focusSelected) {
-                        onSetListMode(KudoState.LIST_FOCUS)
-                    }
-                    onResetSortMode(KudoState.LIST_FOCUS)
-                }
-            )
-            FocusInboxTab(
-                modifier = Modifier.weight(1f),
-                label = "Inbox",
-                selected = !focusSelected,
-                palette = palette,
-                onGestureLockChange = onGestureLockChange,
-                onClick = {
-                    if (focusSelected) {
-                        onSetListMode(KudoState.LIST_INBOX)
-                    }
-                },
-                onLongPress = {
-                    if (focusSelected) {
-                        onSetListMode(KudoState.LIST_INBOX)
-                    }
-                    onResetSortMode(KudoState.LIST_INBOX)
-                }
-            )
-        }
-    }
-}
-
-@Composable
-private fun FocusInboxTab(
-    modifier: Modifier = Modifier,
-    label: String,
-    selected: Boolean,
-    palette: KudoPalette,
-    onGestureLockChange: (Boolean) -> Unit,
-    onClick: () -> Unit,
     onLongPress: () -> Unit
 ) {
     val scope = rememberCoroutineScope()
     val haptics = rememberKudoHaptics()
     val viewConfiguration = LocalViewConfiguration.current
-    val latestOnClick by rememberUpdatedState(onClick)
-    val latestOnLongPress by rememberUpdatedState(onLongPress)
     val holdProgress = remember { Animatable(0f) }
-    val burstProgress = remember { Animatable(1f) }
     var longPressTriggered by remember { mutableStateOf(false) }
-    val textColor by animateColorAsState(
-        targetValue = if (selected) palette.textMain else palette.textSub,
-        animationSpec = tween(durationMillis = 160),
-        label = "focusInboxTabText"
-    )
-    DisposableEffect(Unit) {
-        onDispose { onGestureLockChange(false) }
-    }
 
-    Box(
-        modifier = modifier
-            .clip(RoundedCornerShape(10.dp))
-            .pointerInput(label, selected) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 20.dp, vertical = 10.dp)
+            .pointerInput(sortMode) {
                 detectTapGestures(
                     onPress = {
                         longPressTriggered = false
-                        onGestureLockChange(true)
                         val holdJob = scope.launch {
                             holdProgress.snapTo(0f)
                             holdProgress.animateTo(
@@ -2325,7 +2171,6 @@ private fun FocusInboxTab(
                         try {
                             tryAwaitRelease()
                         } finally {
-                            onGestureLockChange(false)
                             holdJob.cancel()
                             if (!longPressTriggered) {
                                 scope.launch {
@@ -2337,68 +2182,42 @@ private fun FocusInboxTab(
                             }
                         }
                     },
-                    onTap = {
-                        latestOnClick()
-                    },
                     onLongPress = {
                         longPressTriggered = true
                         haptics.vibrate(HapticTickMs)
-                        scope.launch {
-                            holdProgress.snapTo(0f)
-                            burstProgress.snapTo(0f)
-                            burstProgress.animateTo(
-                                targetValue = 1f,
-                                animationSpec = tween(
-                                    durationMillis = 420,
-                                    easing = CubicBezierEasing(0.2f, 0f, 0f, 1f)
-                                )
-                            )
-                        }
-                        latestOnLongPress()
+                        scope.launch { holdProgress.snapTo(0f) }
+                        onLongPress()
                     }
                 )
-            }
-            .clipToBounds()
-            .background(if (selected) palette.card else Color.Transparent)
-            .padding(vertical = 8.dp),
-        contentAlignment = Alignment.Center
+            },
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        if (holdProgress.value > 0f) {
-            Box(
-                modifier = Modifier
-                    .align(Alignment.Center)
-                    .size(16.dp)
-                    .graphicsLayer {
-                        scaleX = 1f + holdProgress.value * 1.7f
-                        scaleY = 1f + holdProgress.value * 1.7f
-                        alpha = holdProgress.value * 0.14f
-                    }
-                    .clip(CircleShape)
-                    .background(if (selected) palette.textMain else palette.textSub)
-            )
-        }
-        if (burstProgress.value < 1f) {
-            Box(
-                modifier = Modifier
-                    .align(Alignment.Center)
-                    .size(18.dp)
-                    .graphicsLayer {
-                        scaleX = 1f + burstProgress.value * 4.6f
-                        scaleY = 1f + burstProgress.value * 4.6f
-                        alpha = (1f - burstProgress.value) * 0.24f
-                    }
-                    .clip(CircleShape)
-                    .background(if (selected) palette.textMain else palette.textSub)
-            )
-        }
         Text(
-            text = label,
-            color = textColor,
-            fontSize = 13.sp,
-            fontWeight = FontWeight.SemiBold
+            text = "TASKS",
+            color = palette.textSub,
+            fontSize = 11.sp,
+            fontWeight = FontWeight.Bold,
+            letterSpacing = 1.sp
         )
+        if (sortMode == KudoState.TASK_SORT_AUTO_DUE) {
+            Text(
+                text = "by date",
+                color = palette.textSub.copy(alpha = 0.5f),
+                fontSize = 10.sp,
+                fontWeight = FontWeight.Medium
+            )
+        } else {
+            Text(
+                text = "hold to reset",
+                color = palette.textSub.copy(alpha = if (holdProgress.value > 0.1f) holdProgress.value else 0.3f),
+                fontSize = 10.sp,
+                fontWeight = FontWeight.Medium
+            )
+        }
     }
 }
+
 
 private val HabitChargePattern = listOf(
     0L to 2L,
@@ -2661,6 +2480,7 @@ private fun TaskRow(
     task: KudoTask,
     palette: KudoPalette,
     finalMultiplier: Float,
+    isActive: Boolean = false,
     isDragging: Boolean = false,
     expanded: Boolean = false,
     modifier: Modifier = Modifier,
@@ -2669,13 +2489,11 @@ private fun TaskRow(
     onGestureLockChange: (Boolean) -> Unit = {},
     onComplete: () -> Unit,
     onCompleteSubtask: (Long) -> Unit,
-    onMoveGesture: () -> Boolean,
     onToggleExpanded: () -> Unit,
     onEdit: () -> Unit
 ) {
     val haptics = rememberKudoHaptics()
     val reward = (task.remainingValue * finalMultiplier).toInt()
-    val canMoveTask = task.list != KudoState.LIST_INBOX || task.valAmount > 0
     val dueBadge = remember(task.dueAtEpochMillis, palette) {
         task.dueAtEpochMillis?.let { dueBadgeFor(it, palette) }
     }
@@ -2690,6 +2508,7 @@ private fun TaskRow(
         targetValue = if (expanded) 180f else 0f,
         label = "subtaskChevronRotation"
     )
+    val activeBorderColor = if (isActive) palette.green.copy(alpha = 0.5f) else palette.line
     SwipeActionCard(
         modifier = modifier,
         reorderModifier = reorderModifier,
@@ -2701,18 +2520,18 @@ private fun TaskRow(
             alignStart = true
         ),
         negativeAction = SwipeVisualAction(
-            color = palette.blue,
-            icon = Icons.Rounded.MoveDown,
+            color = palette.green,
+            icon = Icons.Rounded.Check,
             alignStart = false
         ),
         onPositiveAllowed = { true },
-        onNegativeAllowed = { canMoveTask },
+        onNegativeAllowed = { true },
         onPositiveCommit = onComplete,
-        onNegativeCommit = { onMoveGesture() },
+        onNegativeCommit = onComplete,
         onPositiveCommitHaptic = haptics::vibrateDoubleTick,
         onNegativeReleaseDurationMs = 280,
         onNegativeDismissScale = 0.95f,
-        onNegativeRejected = { onMoveGesture() },
+        onNegativeRejected = {},
         onTap = onEdit,
         swipeEnabled = swipeEnabled,
         onGestureLockChange = onGestureLockChange
@@ -2720,7 +2539,8 @@ private fun TaskRow(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .border(1.dp, palette.line, RoundedCornerShape(14.dp))
+                .border(1.dp, activeBorderColor, RoundedCornerShape(14.dp))
+                .then(if (isActive) Modifier.background(palette.greenBg.copy(alpha = 0.18f), RoundedCornerShape(14.dp)) else Modifier)
                 .padding(horizontal = 16.dp, vertical = 14.dp),
         ) {
             Row(

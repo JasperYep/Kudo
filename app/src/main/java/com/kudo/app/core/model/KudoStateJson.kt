@@ -5,6 +5,8 @@ import org.json.JSONObject
 
 object KudoStateJson {
 
+    private const val LEGACY_LIST_FOCUS = "focus"
+
     fun decodeOrNull(raw: String?): KudoState? {
         if (raw.isNullOrBlank()) {
             return null
@@ -12,17 +14,17 @@ object KudoStateJson {
 
         return try {
             val root = JSONObject(raw)
+            val rawTasks = root.optJSONArray("tasks").toTaskList()
+            val mergedTasks = mergeLegacyLists(rawTasks)
             sanitize(
                 KudoState(
                     coins = root.optInt("coins", 0),
-                    tasks = root.optJSONArray("tasks").toTaskList(),
+                    tasks = mergedTasks,
                     store = root.optJSONArray("store").toStoreList(),
                     logs = root.optJSONArray("logs").toLogList(),
                     recentVals = root.optJSONArray("recentVals").toIntList(),
                     multiplier = root.optDouble("multiplier", 1.0).toFloat(),
-                    listMode = root.optString("listMode", KudoState.LIST_FOCUS),
-                    focusSortMode = root.optInt("focusSortMode", KudoState.TASK_SORT_AUTO_DUE),
-                    inboxSortMode = root.optInt("inboxSortMode", KudoState.TASK_SORT_AUTO_DUE)
+                    taskSortMode = root.optInt("taskSortMode", KudoState.TASK_SORT_AUTO_DUE)
                 )
             )
         } catch (_: Exception) {
@@ -34,9 +36,7 @@ object KudoStateJson {
         val root = JSONObject()
         root.put("coins", state.coins)
         root.put("multiplier", state.multiplier.toDouble())
-        root.put("listMode", state.listMode)
-        root.put("focusSortMode", state.focusSortMode)
-        root.put("inboxSortMode", state.inboxSortMode)
+        root.put("taskSortMode", state.taskSortMode)
 
         val recentVals = JSONArray()
         state.recentVals.forEach(recentVals::put)
@@ -52,7 +52,6 @@ object KudoStateJson {
                     .put("type", task.type)
                     .put("count", task.count)
                     .put("last", task.last)
-                    .put("list", task.list)
                     .put("order", task.order)
                     .apply {
                         task.dueAtEpochMillis?.let { put("dueAt", it) }
@@ -100,7 +99,6 @@ object KudoStateJson {
                             put("type", item.type)
                             put("count", item.count)
                             put("last", item.last)
-                            put("list", item.list)
                             put("order", item.order)
                             item.dueAtEpochMillis?.let { put("dueAt", it) }
                             if (item.subtasks.isNotEmpty()) {
@@ -121,27 +119,21 @@ object KudoStateJson {
     }
 
     fun sanitize(state: KudoState): KudoState {
-        val sanitizedTasks = state.tasks.map { task ->
-            task.copy(
-                list = when (task.list) {
-                    KudoState.LIST_FOCUS,
-                    KudoState.LIST_INBOX -> task.list
-                    else -> KudoState.LIST_FOCUS
-                },
-                subtasks = if (task.type == KudoState.TYPE_HABIT) emptyList() else task.subtasks
-            )
-        }
-
         return state.copy(
-            tasks = sanitizedTasks,
-            listMode = when (state.listMode) {
-                KudoState.LIST_FOCUS,
-                KudoState.LIST_INBOX -> state.listMode
-                else -> KudoState.LIST_FOCUS
+            tasks = state.tasks.map { task ->
+                task.copy(subtasks = if (task.type == KudoState.TYPE_HABIT) emptyList() else task.subtasks)
             },
-            focusSortMode = sanitizeTaskSortMode(state.focusSortMode),
-            inboxSortMode = sanitizeTaskSortMode(state.inboxSortMode)
+            taskSortMode = sanitizeTaskSortMode(state.taskSortMode)
         )
+    }
+
+    // Merges legacy inbox/focus lists: focus tasks first (preserving their order), then inbox.
+    private fun mergeLegacyLists(tasks: List<Pair<KudoTask, String?>>): List<KudoTask> {
+        val focusTasks = tasks.filter { (_, list) -> list == LEGACY_LIST_FOCUS || list == null }
+            .map { (task, _) -> task }
+        val inboxTasks = tasks.filter { (_, list) -> list != LEGACY_LIST_FOCUS && list != null }
+            .map { (task, _) -> task }
+        return focusTasks + inboxTasks
     }
 
     private fun JSONArray?.toIntList(): List<Int> {
@@ -153,12 +145,13 @@ object KudoStateJson {
         }
     }
 
-    private fun JSONArray?.toTaskList(): List<KudoTask> {
+    private fun JSONArray?.toTaskList(): List<Pair<KudoTask, String?>> {
         if (this == null) return emptyList()
         return buildList(length()) {
             for (index in 0 until length()) {
                 val json = optJSONObject(index) ?: continue
                 val id = json.optLong("id", System.currentTimeMillis() + index)
+                val list = if (json.has("list")) json.optString("list") else null
                 add(
                     KudoTask(
                         id = id,
@@ -167,11 +160,10 @@ object KudoStateJson {
                         type = json.optInt("type", KudoState.TYPE_TASK),
                         count = json.optInt("count", 0),
                         last = json.optLong("last", 0L),
-                        list = json.optString("list", KudoState.LIST_FOCUS),
                         order = json.optLong("order", id),
                         dueAtEpochMillis = if (json.has("dueAt")) json.optLong("dueAt") else null,
                         subtasks = json.optJSONArray("subs").toSubtaskList()
-                    )
+                    ) to list
                 )
             }
         }
@@ -220,7 +212,6 @@ object KudoStateJson {
                                 type = it.optInt("type", 0),
                                 count = it.optInt("count", 0),
                                 last = it.optLong("last", 0L),
-                                list = it.optString("list", KudoState.LIST_FOCUS),
                                 order = it.optLong("order", id),
                                 dueAtEpochMillis = if (it.has("dueAt")) it.optLong("dueAt") else null,
                                 subtasks = it.optJSONArray("subs").toSubtaskList()
@@ -273,5 +264,4 @@ object KudoStateJson {
             else -> KudoState.TASK_SORT_AUTO_DUE
         }
     }
-
 }
