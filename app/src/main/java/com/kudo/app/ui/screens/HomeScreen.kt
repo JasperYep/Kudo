@@ -1655,7 +1655,7 @@ private fun StorePage(
 }
 
 private val HabitGridSpacing = 10.dp
-private val HabitGridItemHeight = 76.dp
+private val HabitGridItemHeight = 64.dp
 
 @Composable
 private fun HabitsGrid(
