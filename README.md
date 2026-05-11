@@ -20,12 +20,13 @@ Simple loop. Clear feedback.
 ## What You Can Do
 
 - Track recurring habits
-- Use a minimalist task flow where all new tasks start in **Inbox**
-- Move the most important item into **Focus**
-- Earn coins as you complete tasks, with rewards scaling by level
+- Keep tasks in one ordered queue
+- Add tasks quickly with a pull-down composer
+- Import plain-text or Markdown task lists into Tasks
+- Earn coins as you complete tasks, with rewards shaped by recent effort
 - Spend coins in your personal reward store
-- Review your actions in the log
-- Keep your data local, with backup and restore support
+- Review your actions in the log and keep lightweight notes
+- Keep your data local, with backup, restore, and task import support
 
 ## What Makes Kudo Different
 
@@ -41,16 +42,18 @@ They are a small system for making effort feel tangible.
 
 ### Tasks with shape
 
-Not everything belongs in one list.
+Kudo keeps the main task flow direct.
 
-- **Habits** are repeatable
-- **Focus** is for what matters now
-- **Inbox** is for quick capture and loose ends
+- **Tasks** live in one queue you can reorder
+- **Habits** are repeatable actions
+- **Store** holds personal rewards
+- **Log** records completed work and spending
 
 ### Private and local
 
 Your data stays on your device.  
-Import and export work through the system file manager.
+Backup and restore work through the system file manager.  
+Task import accepts simple pasted text.
 
 ## Philosophy
 

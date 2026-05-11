@@ -9,6 +9,7 @@ import com.kudo.app.KudoApplication
 import com.kudo.app.core.model.KudoReducer
 import com.kudo.app.core.model.KudoState
 import com.kudo.app.core.model.KudoSubtaskDraft
+import com.kudo.app.core.model.KudoTaskTextImport
 import com.kudo.app.core.repository.KudoStateRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -348,6 +349,35 @@ class KudoViewModel(application: Application) : AndroidViewModel(application) {
         launchAsync {
             onComplete(repository.importFromUri(uri))
         }
+    }
+
+    fun importTasksFromText(raw: String, onComplete: (Int) -> Unit = {}) {
+        val drafts = KudoTaskTextImport.parse(raw)
+        if (drafts.isEmpty()) {
+            onComplete(0)
+            return
+        }
+
+        val createdAt = System.currentTimeMillis()
+        val lastCreatedId = createdAt + drafts.lastIndex
+        viewState.update {
+            it.copy(
+                currentView = VIEW_TASKS,
+                taskCreationTarget = TaskCreationTarget.TASK,
+                recentTaskInsertId = lastCreatedId
+            )
+        }
+        launchAsync {
+            repository.updateState { state ->
+                KudoReducer.addImportedTasks(
+                    state = state,
+                    drafts = drafts,
+                    now = createdAt
+                )
+            }
+            onComplete(drafts.size)
+        }
+        clearRecentInsert(isStore = false, id = lastCreatedId)
     }
 
     private fun parseDashboardValue(raw: String): Int {

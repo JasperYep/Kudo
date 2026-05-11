@@ -99,7 +99,8 @@ internal fun SettingsSheet(
     onToggleHelp: () -> Unit,
     onSetTheme: (String) -> Unit,
     onExport: () -> Unit,
-    onImport: () -> Unit
+    onImport: () -> Unit,
+    onImportTasks: () -> Unit
 ) {
     val ratio = remember(uiState.data.logs) {
         var income = 0
@@ -213,11 +214,18 @@ internal fun SettingsSheet(
                     onClick = onExport
                 )
                 ActionRow(
-                    title = "Restore Data",
+                    title = "Restore Backup",
                     palette = palette,
                     icon = Icons.Rounded.Upload,
                     enabled = !isFileActionInProgress,
                     onClick = onImport
+                )
+                ActionRow(
+                    title = "Import Tasks",
+                    palette = palette,
+                    icon = Icons.Rounded.Upload,
+                    enabled = !isFileActionInProgress,
+                    onClick = onImportTasks
                 )
                 if (isFileActionInProgress) {
                     Text(
@@ -426,7 +434,7 @@ private fun HelpContent(
         )
         Text(text = "💾 数据安全", color = palette.textMain, fontWeight = FontWeight.Bold)
         Text(
-            text = "备份：通过系统文件管理器将数据导出为 JSON 文件。\n恢复：导入备份文件，会覆盖当前全部数据，请谨慎操作。",
+            text = "备份：通过系统文件管理器将数据导出为 JSON 文件。\n恢复：导入备份文件，会覆盖当前全部数据，请谨慎操作。\n导入任务：粘贴纯文本或 Markdown 列表，会追加到 Tasks。",
             color = palette.textSub,
             fontSize = 13.sp
         )
