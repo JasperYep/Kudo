@@ -424,6 +424,7 @@ fun HomeScreen(
                         palette = palette,
                         modifier = Modifier.fillMaxSize(),
                         onUndo = viewModel::undoLog,
+                        onLongPressTrend = viewModel::openNotebook,
                         listState = logListState
                     )
                 }
@@ -440,6 +441,19 @@ fun HomeScreen(
                 )
             }
         }
+    }
+
+    if (uiState.isNotebookVisible) {
+        NotebookOverlay(
+            uiState = uiState,
+            palette = palette,
+            onCreate = viewModel::addNotebookNote,
+            onDelete = viewModel::deleteNotebookNote,
+            onSelect = viewModel::selectNotebookNote,
+            onTitleChange = viewModel::updateNotebookNoteTitle,
+            onContentChange = viewModel::updateNotebookNoteContent,
+            onClose = viewModel::closeNotebook
+        )
     }
 
     if (uiState.isSettingsVisible) {
@@ -2038,11 +2052,16 @@ private fun LogPage(
     palette: KudoPalette,
     modifier: Modifier = Modifier,
     onUndo: (Int) -> Unit,
+    onLongPressTrend: () -> Unit,
     listState: LazyListState
 ) {
     if (uiState.data.logs.isEmpty()) {
         Column(modifier = modifier.fillMaxSize()) {
-            TrendChart(logs = uiState.data.logs, palette = palette)
+            TrendChart(
+                logs = uiState.data.logs,
+                palette = palette,
+                onLongPressTrend = onLongPressTrend
+            )
             EmptyState(text = "No history", palette = palette)
         }
         return
@@ -2059,7 +2078,11 @@ private fun LogPage(
         modifier = modifier
     ) {
         item {
-            TrendChart(logs = uiState.data.logs, palette = palette)
+            TrendChart(
+                logs = uiState.data.logs,
+                palette = palette,
+                onLongPressTrend = onLongPressTrend
+            )
         }
 
         grouped.forEach { (day, entries) ->
@@ -3057,10 +3080,12 @@ private fun SwipeActionCard(
 @Composable
 private fun TrendChart(
     logs: List<KudoLogEntry>,
-    palette: KudoPalette
+    palette: KudoPalette,
+    onLongPressTrend: () -> Unit
 ) {
     val income = remember(logs) { buildTrend(logs, positive = true) }
     val expense = remember(logs) { buildTrend(logs, positive = false) }
+    val haptics = rememberKudoHaptics()
 
     Card(
         modifier = Modifier
@@ -3085,6 +3110,12 @@ private fun TrendChart(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(100.dp)
+                    .pointerInput(Unit) {
+                        detectTapGestures(onLongPress = {
+                            haptics.vibrate(HapticTickMs)
+                            onLongPressTrend()
+                        })
+                    }
             ) {
                 val max = maxOf(
                     income.maxOrNull() ?: 0f,
@@ -3484,7 +3515,7 @@ private fun formatTime(timestamp: Long): String {
         .format(TimeFormatter)
 }
 
-private fun formatDayHeader(timestamp: Long): String {
+internal fun formatDayHeader(timestamp: Long): String {
     return Instant.ofEpochMilli(timestamp)
         .atZone(AppZoneId)
         .format(DayHeaderFormatter)

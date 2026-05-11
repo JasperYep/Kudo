@@ -10,7 +10,8 @@ data class KudoState(
     val logs: List<KudoLogEntry> = emptyList(),
     val recentVals: List<Int> = emptyList(),
     val multiplier: Float = 1.0f,
-    val taskSortMode: Int = TASK_SORT_AUTO_DUE
+    val taskSortMode: Int = TASK_SORT_AUTO_DUE,
+    val notes: List<KudoNote> = emptyList()
 ) {
     companion object {
         const val TYPE_TASK = 0
@@ -146,3 +147,21 @@ data class KudoSubtask(
 data class KudoSubtaskDraft(
     val title: String
 )
+
+@Immutable
+data class KudoNote(
+    val id: Long,
+    val title: String = "",
+    val content: String = "",
+    val updatedAt: Long
+) {
+    val displayTitle: String
+        get() = title.trim()
+            .ifBlank {
+                content.lineSequence()
+                    .firstOrNull { it.isNotBlank() }
+                    ?.trim()
+                    .orEmpty()
+            }
+            .ifBlank { "New Note" }
+}

@@ -1,13 +1,17 @@
 package com.kudo.app.ui.screens
 
+import android.Manifest
 import android.app.AlarmManager
 import android.app.DatePickerDialog
 import android.app.TimePickerDialog
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.PowerManager
 import android.provider.Settings
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -70,6 +74,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.app.NotificationManagerCompat
+import androidx.core.content.ContextCompat
 import com.kudo.app.core.model.KudoSubtask
 import com.kudo.app.core.model.KudoSubtaskDraft
 import com.kudo.app.core.repository.KudoStateRepository
@@ -990,6 +996,9 @@ private fun NotificationPermissionsSection(palette: KudoPalette) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
 
+    var notificationsEnabled by remember {
+        mutableStateOf(NotificationManagerCompat.from(context).areNotificationsEnabled())
+    }
     var canScheduleExact by remember {
         mutableStateOf(
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
@@ -1007,6 +1016,7 @@ private fun NotificationPermissionsSection(palette: KudoPalette) {
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
+                notificationsEnabled = NotificationManagerCompat.from(context).areNotificationsEnabled()
                 canScheduleExact = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                     context.getSystemService(AlarmManager::class.java)?.canScheduleExactAlarms() ?: true
                 } else true
@@ -1017,9 +1027,14 @@ private fun NotificationPermissionsSection(palette: KudoPalette) {
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
+    val notificationPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) {
+        notificationsEnabled = NotificationManagerCompat.from(context).areNotificationsEnabled()
+    }
 
     val showExactAlarm = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
-    if ((!showExactAlarm || canScheduleExact) && isIgnoringBatteryOpts) return
+    if (notificationsEnabled && (!showExactAlarm || canScheduleExact) && isIgnoringBatteryOpts) return
 
     Text(
         text = "Reminders",
@@ -1029,6 +1044,30 @@ private fun NotificationPermissionsSection(palette: KudoPalette) {
         modifier = Modifier.padding(bottom = 12.dp)
     )
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        if (!notificationsEnabled) {
+            NotificationPermRow(
+                title = "Notifications",
+                ok = false,
+                palette = palette,
+                onClick = {
+                    if (
+                        Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+                        ContextCompat.checkSelfPermission(
+                            context,
+                            Manifest.permission.POST_NOTIFICATIONS
+                        ) != PackageManager.PERMISSION_GRANTED
+                    ) {
+                        notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                    } else {
+                        context.startActivity(
+                            Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).apply {
+                                putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
+                            }
+                        )
+                    }
+                }
+            )
+        }
         if (showExactAlarm) {
             NotificationPermRow(
                 title = "Exact Alarms",

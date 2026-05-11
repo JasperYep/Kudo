@@ -24,7 +24,10 @@ object KudoStateJson {
                     logs = root.optJSONArray("logs").toLogList(),
                     recentVals = root.optJSONArray("recentVals").toIntList(),
                     multiplier = root.optDouble("multiplier", 1.0).toFloat(),
-                    taskSortMode = root.optInt("taskSortMode", KudoState.TASK_SORT_AUTO_DUE)
+                    taskSortMode = root.optInt("taskSortMode", KudoState.TASK_SORT_AUTO_DUE),
+                    notes = root.optJSONArray("notes").toNoteList().ifEmpty {
+                        legacyNotebookToNotes(root.optString("notebook", ""))
+                    }
                 )
             )
         } catch (_: Exception) {
@@ -110,6 +113,18 @@ object KudoStateJson {
             logs.put(json)
         }
         root.put("logs", logs)
+
+        val notes = JSONArray()
+        state.notes.forEach { note ->
+            notes.put(
+                JSONObject()
+                    .put("id", note.id)
+                    .put("title", note.title)
+                    .put("content", note.content)
+                    .put("updatedAt", note.updatedAt)
+            )
+        }
+        root.put("notes", notes)
 
         return root.toString()
     }
@@ -223,6 +238,24 @@ object KudoStateJson {
         }
     }
 
+    private fun JSONArray?.toNoteList(): List<KudoNote> {
+        if (this == null) return emptyList()
+        return buildList(length()) {
+            for (index in 0 until length()) {
+                val json = optJSONObject(index) ?: continue
+                val id = json.optLong("id", System.currentTimeMillis() + index)
+                add(
+                    KudoNote(
+                        id = id,
+                        title = json.optString("title", ""),
+                        content = json.optString("content", ""),
+                        updatedAt = json.optLong("updatedAt", id)
+                    )
+                )
+            }
+        }
+    }
+
     private fun JSONArray?.toSubtaskList(): List<KudoSubtask> {
         if (this == null) return emptyList()
         return buildList(length()) {
@@ -255,6 +288,18 @@ object KudoStateJson {
                 )
             }
         }
+    }
+
+    private fun legacyNotebookToNotes(content: String): List<KudoNote> {
+        if (content.isBlank()) return emptyList()
+        val now = System.currentTimeMillis()
+        return listOf(
+            KudoNote(
+                id = now,
+                content = content,
+                updatedAt = now
+            )
+        )
     }
 
     private fun sanitizeTaskSortMode(mode: Int): Int {
