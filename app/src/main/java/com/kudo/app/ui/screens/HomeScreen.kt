@@ -236,6 +236,8 @@ fun HomeScreen(
     var storeDraftTitle by rememberSaveable { mutableStateOf("") }
     var storeDraftValue by rememberSaveable { mutableStateOf("") }
     var pendingImportUri by remember { mutableStateOf<Uri?>(null) }
+    var isTaskImportDialogVisible by rememberSaveable { mutableStateOf(false) }
+    var taskImportText by rememberSaveable { mutableStateOf("") }
     var isFileTransferInProgress by remember { mutableStateOf(false) }
     var activeComposerRevealProgress by remember { mutableFloatStateOf(0f) }
     val tasksListState = rememberLazyListState()
@@ -471,6 +473,9 @@ fun HomeScreen(
             },
             onImport = {
                 openDocumentLauncher.launch(arrayOf("application/json", "text/json", "text/plain"))
+            },
+            onImportTasks = {
+                isTaskImportDialogVisible = true
             }
         )
     }
@@ -478,7 +483,7 @@ fun HomeScreen(
     if (pendingImportUri != null) {
         AlertDialog(
             onDismissRequest = { pendingImportUri = null },
-            title = { Text("Restore Data") },
+            title = { Text("Restore Backup") },
             text = { Text("This will overwrite current local data. Continue?") },
             confirmButton = {
                 TextButton(
@@ -502,6 +507,61 @@ fun HomeScreen(
             },
             dismissButton = {
                 TextButton(onClick = { pendingImportUri = null }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
+    if (isTaskImportDialogVisible) {
+        AlertDialog(
+            onDismissRequest = { isTaskImportDialogVisible = false },
+            title = { Text("Import Tasks") },
+            text = {
+                Column {
+                    Text(
+                        text = "Paste one task per line. A trailing number becomes the value.",
+                        color = palette.textSub.copy(alpha = 0.72f),
+                        fontSize = 13.sp
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    TextField(
+                        value = taskImportText,
+                        onValueChange = { taskImportText = it },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(180.dp),
+                        placeholder = {
+                            Text(
+                                text = "- Draft project outline 20\n- Review weekly notes 15\n- Plan next milestone",
+                                color = palette.textSub.copy(alpha = 0.42f)
+                            )
+                        },
+                        colors = textFieldColors(palette),
+                        shape = RoundedCornerShape(12.dp)
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        viewModel.importTasksFromText(taskImportText) { count ->
+                            if (count > 0) {
+                                Toast.makeText(context, "Imported $count tasks", Toast.LENGTH_SHORT).show()
+                                taskImportText = ""
+                                isTaskImportDialogVisible = false
+                                viewModel.closeSettings()
+                            } else {
+                                Toast.makeText(context, "No valid tasks found", Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                    }
+                ) {
+                    Text("Import")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { isTaskImportDialogVisible = false }) {
                     Text("Cancel")
                 }
             }
@@ -968,7 +1028,7 @@ private fun PullComposerPage(
                     childGestureLocked = locked
                 }
 
-                val hintAlpha = if (composerRevealProgress <= 0.02f) 0.35f else 0f
+                val hintAlpha = if (isListAtTop && composerRevealProgress <= 0.02f) 0.35f else 0f
                 Text(
                     text = "swipe down to add",
                     color = palette.textSub.copy(alpha = hintAlpha),

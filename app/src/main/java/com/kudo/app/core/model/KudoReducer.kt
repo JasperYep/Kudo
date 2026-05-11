@@ -38,6 +38,39 @@ object KudoReducer {
         )
     }
 
+    fun addImportedTasks(
+        state: KudoState,
+        drafts: List<KudoTaskImportDraft>,
+        now: Long = System.currentTimeMillis()
+    ): KudoState {
+        if (drafts.isEmpty()) return state
+
+        val firstOrder = if (state.taskSortMode == KudoState.TASK_SORT_MANUAL) {
+            state.tasks
+                .asSequence()
+                .filter { it.type == KudoState.TYPE_TASK }
+                .maxOfOrNull(KudoTask::order)
+                ?.plus(1L)
+                ?: 0L
+        } else {
+            now
+        }
+        val imported = drafts.mapIndexed { index, draft ->
+            KudoTask(
+                id = now + index,
+                title = draft.title,
+                valAmount = draft.value,
+                type = KudoState.TYPE_TASK,
+                count = 0,
+                last = 0L,
+                order = firstOrder + index
+            )
+        }
+        return KudoStateJson.sanitize(
+            state.copy(tasks = state.tasks + imported)
+        )
+    }
+
     fun addStoreItem(
         state: KudoState,
         title: String,
