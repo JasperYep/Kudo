@@ -13,14 +13,14 @@ class KudoReducerImportTest {
                 KudoTask(
                     id = 1L,
                     title = "Existing",
-                    valAmount = 5,
-                    type = KudoState.TYPE_TASK
+                    coins = 5,
+                    kind = KudoTaskKind.Task
                 ),
                 KudoTask(
                     id = 2L,
                     title = "Habit",
-                    valAmount = 3,
-                    type = KudoState.TYPE_HABIT
+                    coins = 3,
+                    kind = KudoTaskKind.Habit
                 )
             ),
             store = listOf(KudoStoreItem(id = 3L, title = "Coffee", cost = 8))
@@ -38,27 +38,30 @@ class KudoReducerImportTest {
         assertEquals(12, updated.coins)
         assertEquals(initial.store, updated.store)
         assertEquals(listOf("Existing", "Habit", "Read survey", "Write notes"), updated.tasks.map(KudoTask::title))
-        assertEquals(listOf(KudoState.TYPE_TASK, KudoState.TYPE_HABIT, KudoState.TYPE_TASK, KudoState.TYPE_TASK), updated.tasks.map(KudoTask::type))
-        assertEquals(listOf(5, 3, 20, 40), updated.tasks.map(KudoTask::valAmount))
+        assertEquals(
+            listOf(KudoTaskKind.Task, KudoTaskKind.Habit, KudoTaskKind.Task, KudoTaskKind.Task),
+            updated.tasks.map(KudoTask::kind)
+        )
+        assertEquals(listOf(5, 3, 20, 40), updated.tasks.map(KudoTask::coins))
     }
 
     @Test
     fun addImportedTasks_assignsIncreasingManualOrder() {
         val initial = KudoState(
-            taskSortMode = KudoState.TASK_SORT_MANUAL,
+            taskSortMode = KudoTaskSortMode.Manual,
             tasks = listOf(
                 KudoTask(
                     id = 1L,
                     title = "Existing",
-                    valAmount = 5,
-                    type = KudoState.TYPE_TASK,
+                    coins = 5,
+                    kind = KudoTaskKind.Task,
                     order = 8L
                 ),
                 KudoTask(
                     id = 2L,
                     title = "Habit",
-                    valAmount = 3,
-                    type = KudoState.TYPE_HABIT,
+                    coins = 3,
+                    kind = KudoTaskKind.Habit,
                     order = 20L
                 )
             )

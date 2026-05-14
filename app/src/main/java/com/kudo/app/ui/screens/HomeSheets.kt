@@ -80,8 +80,8 @@ import com.kudo.app.core.model.KudoSubtask
 import com.kudo.app.core.model.KudoSubtaskDraft
 import com.kudo.app.core.repository.KudoStateRepository
 import com.kudo.app.ui.viewmodel.EditingTarget
+import com.kudo.app.ui.viewmodel.KudoEditKind
 import com.kudo.app.ui.viewmodel.KudoUiState
-import com.kudo.app.ui.viewmodel.KudoViewModel
 import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalDateTime
@@ -106,10 +106,10 @@ internal fun SettingsSheet(
         var income = 0
         var expense = 0
         uiState.data.logs.forEach { log ->
-            if (log.value > 0) {
-                income += log.value
-            } else if (log.value < 0) {
-                expense += -log.value
+            if (log.coins > 0) {
+                income += log.coins
+            } else if (log.coins < 0) {
+                expense += -log.coins
             }
         }
         when {
@@ -136,19 +136,19 @@ internal fun SettingsSheet(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = if (uiState.isHelpVisible) "Help" else "Settings",
+                    text = if (uiState.view.helpVisible) "Help" else "Settings",
                     color = palette.textMain,
                     fontSize = 20.sp,
                     fontWeight = FontWeight.Bold
                 )
                 IconButton(onClick = onToggleHelp) {
                     Icon(
-                        imageVector = if (uiState.isHelpVisible) {
+                        imageVector = if (uiState.view.helpVisible) {
                             Icons.Rounded.ArrowBack
                         } else {
                             Icons.Rounded.HelpOutline
                         },
-                        contentDescription = if (uiState.isHelpVisible) {
+                        contentDescription = if (uiState.view.helpVisible) {
                             "Back to settings"
                         } else {
                             "Open help"
@@ -158,7 +158,7 @@ internal fun SettingsSheet(
                 }
             }
 
-            if (!uiState.isHelpVisible) {
+            if (!uiState.view.helpVisible) {
                 StatGrid(
                     palette = palette,
                     ratio = ratio
@@ -470,7 +470,7 @@ internal fun EditSheet(
     val context = LocalContext.current
     val targetTask = uiState.data.tasks.firstOrNull { it.id == target.id }
     val targetStore = uiState.data.store.firstOrNull { it.id == target.id }
-    val isTaskEditor = target.kind == KudoViewModel.KIND_TASK && targetTask != null
+    val isTaskEditor = target.kind == KudoEditKind.Task && targetTask != null
     val isSubtaskLocked = targetTask?.isSubtaskStructureLocked == true
     val hasStableSubtaskViewport = isTaskEditor
     val stableSheetViewportHeight = remember(configuration.screenHeightDp) {
@@ -486,7 +486,7 @@ internal fun EditSheet(
         mutableStateOf(
             when {
                 false -> ""
-                targetTask != null -> targetTask.valAmount.toString()
+                targetTask != null -> targetTask.coins.toString()
                 targetStore != null -> targetStore.cost.toString()
                 else -> ""
             }

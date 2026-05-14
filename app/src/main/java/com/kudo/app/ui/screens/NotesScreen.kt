@@ -73,11 +73,11 @@ internal fun NotebookOverlay(
     onContentChange: (Long, String) -> Unit,
     onClose: () -> Unit
 ) {
-    BackHandler(enabled = uiState.isNotebookVisible) { onClose() }
+    BackHandler(enabled = uiState.view.isNotebookVisible) { onClose() }
 
     var presented by remember { mutableStateOf(false) }
     var pendingDeleteId by remember { mutableStateOf<Long?>(null) }
-    val currentNote = uiState.data.notes.firstOrNull { it.id == uiState.selectedNotebookNoteId }
+    val currentNote = uiState.data.notes.firstOrNull { it.id == uiState.view.selectedNotebookNoteId }
         ?: uiState.data.notes.firstOrNull()
     var titleDraft by rememberSaveable(currentNote?.id ?: -1L, stateSaver = TextFieldValue.Saver) {
         mutableStateOf(TextFieldValue(currentNote?.title.orEmpty()))

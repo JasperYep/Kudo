@@ -8,29 +8,26 @@ data class KudoState(
     val tasks: List<KudoTask> = emptyList(),
     val store: List<KudoStoreItem> = emptyList(),
     val logs: List<KudoLogEntry> = emptyList(),
-    val recentVals: List<Int> = emptyList(),
+    val recentCoins: List<Int> = emptyList(),
     val multiplier: Float = 1.0f,
-    val taskSortMode: Int = TASK_SORT_AUTO_DUE,
+    val taskSortMode: KudoTaskSortMode = KudoTaskSortMode.AutoDue,
     val notes: List<KudoNote> = emptyList()
-) {
-    companion object {
-        const val TYPE_TASK = 0
-        const val TYPE_HABIT = 1
+)
 
-        const val STORE_ONCE = 0
-        const val STORE_INFINITE = 1
+enum class KudoTaskKind { Task, Habit }
 
-        const val TASK_SORT_AUTO_DUE = 0
-        const val TASK_SORT_MANUAL = 1
-    }
-}
+enum class KudoStoreKind { Once, Repeatable }
+
+enum class KudoTaskSortMode { AutoDue, Manual }
+
+enum class KudoLogKind { Task, Store }
 
 @Immutable
 data class KudoTask(
     val id: Long,
     val title: String,
-    val valAmount: Int,
-    val type: Int,
+    val coins: Int,
+    val kind: KudoTaskKind,
     val count: Int = 0,
     val last: Long = 0L,
     val order: Long = id,
@@ -38,7 +35,7 @@ data class KudoTask(
     val subtasks: List<KudoSubtask> = emptyList()
 ) {
     val isHabit: Boolean
-        get() = type == KudoState.TYPE_HABIT
+        get() = kind == KudoTaskKind.Habit
 
     val hasSubtasks: Boolean
         get() = subtasks.isNotEmpty()
@@ -46,11 +43,11 @@ data class KudoTask(
     val completedSubtaskCount: Int
         get() = subtasks.count(KudoSubtask::isCompleted)
 
-    val remainingValue: Int
+    val remainingCoins: Int
         get() = if (subtasks.isEmpty()) {
-            valAmount
+            coins
         } else {
-            subtasks.filterNot(KudoSubtask::isCompleted).sumOf(KudoSubtask::valAmount)
+            subtasks.filterNot(KudoSubtask::isCompleted).sumOf(KudoSubtask::coins)
         }
 
     val isSubtaskStructureLocked: Boolean
@@ -62,73 +59,88 @@ data class KudoStoreItem(
     val id: Long,
     val title: String,
     val cost: Int,
-    val type: Int = KudoState.STORE_ONCE
+    val kind: KudoStoreKind = KudoStoreKind.Once
 )
 
 @Immutable
 data class KudoLogEntry(
     val timestamp: Long,
     val text: String,
-    val value: Int,
-    val baseValue: Int? = null,
-    val type: String,
+    val coins: Int,
+    val baseCoins: Int? = null,
+    val kind: KudoLogKind,
     val taskId: Long? = null,
     val subtaskId: Long? = null,
     val isHabit: Boolean = false,
-    val itemData: KudoLogItemData? = null
+    val subject: KudoLogSubject? = null
 )
 
 @Immutable
-data class KudoLogItemData(
-    val id: Long,
-    val title: String,
-    val valAmount: Int? = null,
-    val cost: Int? = null,
-    val type: Int = 0,
-    val count: Int = 0,
-    val last: Long = 0L,
-    val order: Long = id,
-    val dueAtEpochMillis: Long? = null,
-    val subtasks: List<KudoSubtask> = emptyList()
-) {
-    fun toTask(): KudoTask = KudoTask(
-        id = id,
-        title = title,
-        valAmount = valAmount ?: 0,
-        type = type,
-        count = count,
-        last = last,
-        order = order,
-        dueAtEpochMillis = dueAtEpochMillis,
-        subtasks = subtasks
-    )
+sealed interface KudoLogSubject {
+    val id: Long
+    val title: String
 
-    fun toStoreItem(): KudoStoreItem = KudoStoreItem(
-        id = id,
-        title = title,
-        cost = cost ?: 0,
-        type = type
-    )
-
-    companion object {
-        fun fromTask(task: KudoTask): KudoLogItemData = KudoLogItemData(
-            id = task.id,
-            title = task.title,
-            valAmount = task.valAmount,
-            type = task.type,
-            count = task.count,
-            last = task.last,
-            order = task.order,
-            dueAtEpochMillis = task.dueAtEpochMillis,
-            subtasks = task.subtasks
+    @Immutable
+    data class Task(
+        override val id: Long,
+        override val title: String,
+        val coins: Int,
+        val kind: KudoTaskKind,
+        val count: Int = 0,
+        val last: Long = 0L,
+        val order: Long = id,
+        val dueAtEpochMillis: Long? = null,
+        val subtasks: List<KudoSubtask> = emptyList()
+    ) : KudoLogSubject {
+        fun toTask(): KudoTask = KudoTask(
+            id = id,
+            title = title,
+            coins = coins,
+            kind = kind,
+            count = count,
+            last = last,
+            order = order,
+            dueAtEpochMillis = dueAtEpochMillis,
+            subtasks = subtasks
         )
 
-        fun fromStoreItem(item: KudoStoreItem): KudoLogItemData = KudoLogItemData(
-            id = item.id,
-            title = item.title,
-            cost = item.cost,
-            type = item.type
+        companion object {
+            fun fromTask(task: KudoTask): Task = Task(
+                id = task.id,
+                title = task.title,
+                coins = task.coins,
+                kind = task.kind,
+                count = task.count,
+                last = task.last,
+                order = task.order,
+                dueAtEpochMillis = task.dueAtEpochMillis,
+                subtasks = task.subtasks
+            )
+        }
+    }
+
+    @Immutable
+    data class Store(
+        override val id: Long,
+        override val title: String,
+        val cost: Int,
+        val kind: KudoStoreKind
+    ) : KudoLogSubject {
+        fun toStoreItem(): KudoStoreItem = KudoStoreItem(
+            id = id,
+            title = title,
+            cost = cost,
+            kind = kind
         )
+
+        companion object {
+            fun fromStoreItem(item: KudoStoreItem): Store = Store(
+                id = item.id,
+                title = item.title,
+                cost = item.cost,
+                kind = item.kind
+            )
+        }
     }
 }
 
@@ -136,7 +148,7 @@ data class KudoLogItemData(
 data class KudoSubtask(
     val id: Long,
     val title: String,
-    val valAmount: Int = 0,
+    val coins: Int = 0,
     val completedAt: Long? = null
 ) {
     val isCompleted: Boolean

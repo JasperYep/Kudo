@@ -7,17 +7,17 @@ object KudoReducer {
     fun addTask(
         state: KudoState,
         title: String,
-        value: Int,
-        type: Int,
+        coins: Int,
+        kind: KudoTaskKind,
         now: Long = System.currentTimeMillis()
     ): KudoState {
         val nextOrder = if (
-            type == KudoState.TYPE_TASK &&
-            state.taskSortMode == KudoState.TASK_SORT_MANUAL
+            kind == KudoTaskKind.Task &&
+            state.taskSortMode == KudoTaskSortMode.Manual
         ) {
             state.tasks
                 .asSequence()
-                .filter { it.type == KudoState.TYPE_TASK }
+                .filter { it.kind == KudoTaskKind.Task }
                 .maxOfOrNull(KudoTask::order)
                 ?.plus(1L)
                 ?: 0L
@@ -27,8 +27,8 @@ object KudoReducer {
         val item = KudoTask(
             id = now,
             title = title,
-            valAmount = value,
-            type = type,
+            coins = coins,
+            kind = kind,
             count = 0,
             last = 0L,
             order = nextOrder
@@ -45,10 +45,10 @@ object KudoReducer {
     ): KudoState {
         if (drafts.isEmpty()) return state
 
-        val firstOrder = if (state.taskSortMode == KudoState.TASK_SORT_MANUAL) {
+        val firstOrder = if (state.taskSortMode == KudoTaskSortMode.Manual) {
             state.tasks
                 .asSequence()
-                .filter { it.type == KudoState.TYPE_TASK }
+                .filter { it.kind == KudoTaskKind.Task }
                 .maxOfOrNull(KudoTask::order)
                 ?.plus(1L)
                 ?: 0L
@@ -59,8 +59,8 @@ object KudoReducer {
             KudoTask(
                 id = now + index,
                 title = draft.title,
-                valAmount = draft.value,
-                type = KudoState.TYPE_TASK,
+                coins = draft.value,
+                kind = KudoTaskKind.Task,
                 count = 0,
                 last = 0L,
                 order = firstOrder + index
@@ -75,34 +75,34 @@ object KudoReducer {
         state: KudoState,
         title: String,
         cost: Int,
-        type: Int,
+        kind: KudoStoreKind,
         now: Long = System.currentTimeMillis()
     ): KudoState {
         val item = KudoStoreItem(
             id = now,
             title = title,
             cost = cost,
-            type = type
+            kind = kind
         )
         return state.copy(store = listOf(item) + state.store)
     }
 
     fun completeTask(state: KudoState, id: Long, now: Long = System.currentTimeMillis()): KudoState {
         val task = state.tasks.firstOrNull { it.id == id } ?: return state
-        val baseValue = task.remainingValue
-        val reward = floor(baseValue * state.multiplier).toInt()
+        val baseCoins = task.remainingCoins
+        val reward = floor(baseCoins * state.multiplier).toInt()
         val rewarded = state.copy(coins = state.coins + reward)
-        val grown = processGrowth(rewarded, baseValue)
+        val grown = processGrowth(rewarded, baseCoins)
         val log = KudoLogEntry(
             timestamp = now,
             text = task.title,
-            value = reward,
-            baseValue = baseValue,
-            type = "task",
+            coins = reward,
+            baseCoins = baseCoins,
+            kind = KudoLogKind.Task,
             taskId = task.id,
-            itemData = KudoLogItemData.fromTask(task)
+            subject = KudoLogSubject.Task.fromTask(task)
         )
-        val remainingTasks = if (task.type == KudoState.TYPE_TASK) {
+        val remainingTasks = if (task.kind == KudoTaskKind.Task) {
             grown.tasks.filterNot { it.id == id }
         } else {
             grown.tasks
@@ -122,9 +122,9 @@ object KudoReducer {
     ): KudoState {
         val task = state.tasks.firstOrNull { it.id == taskId } ?: return state
         val subtask = task.subtasks.firstOrNull { it.id == subtaskId && !it.isCompleted } ?: return state
-        val reward = floor(subtask.valAmount * state.multiplier).toInt()
+        val reward = floor(subtask.coins * state.multiplier).toInt()
         val rewarded = state.copy(coins = state.coins + reward)
-        val grown = processGrowth(rewarded, subtask.valAmount)
+        val grown = processGrowth(rewarded, subtask.coins)
         val updatedTask = task.copy(
             subtasks = task.subtasks.map { current ->
                 if (current.id == subtaskId) {
@@ -137,14 +137,14 @@ object KudoReducer {
         val log = KudoLogEntry(
             timestamp = now,
             text = "${task.title}: ${subtask.title}",
-            value = reward,
-            baseValue = subtask.valAmount,
-            type = "task",
+            coins = reward,
+            baseCoins = subtask.coins,
+            kind = KudoLogKind.Task,
             taskId = task.id,
             subtaskId = subtask.id,
-            itemData = KudoLogItemData.fromTask(task)
+            subject = KudoLogSubject.Task.fromTask(task)
         )
-        val updatedTasks = if (updatedTask.remainingValue == 0) {
+        val updatedTasks = if (updatedTask.remainingCoins == 0) {
             grown.tasks.filterNot { it.id == taskId }
         } else {
             grown.tasks.map { current ->
@@ -163,9 +163,9 @@ object KudoReducer {
 
     fun completeHabit(state: KudoState, id: Long, now: Long = System.currentTimeMillis()): KudoState {
         val habit = state.tasks.firstOrNull { it.id == id } ?: return state
-        val reward = floor(habit.valAmount * state.multiplier).toInt()
+        val reward = floor(habit.coins * state.multiplier).toInt()
         val rewarded = state.copy(coins = state.coins + reward)
-        val grown = processGrowth(rewarded, habit.valAmount)
+        val grown = processGrowth(rewarded, habit.coins)
         val updatedTasks = grown.tasks.map { current ->
             if (current.id == id) {
                 current.copy(
@@ -180,12 +180,12 @@ object KudoReducer {
         val log = KudoLogEntry(
             timestamp = now,
             text = habit.title,
-            value = reward,
-            baseValue = habit.valAmount,
-            type = "task",
+            coins = reward,
+            baseCoins = habit.coins,
+            kind = KudoLogKind.Task,
             taskId = habit.id,
             isHabit = true,
-            itemData = KudoLogItemData.fromTask(snapshot)
+            subject = KudoLogSubject.Task.fromTask(snapshot)
         )
         return grown.copy(
             tasks = updatedTasks,
@@ -199,7 +199,7 @@ object KudoReducer {
 
         return state.copy(
             coins = state.coins - item.cost,
-            store = if (item.type == KudoState.STORE_ONCE) {
+            store = if (item.kind == KudoStoreKind.Once) {
                 state.store.filterNot { it.id == id }
             } else {
                 state.store
@@ -208,9 +208,9 @@ object KudoReducer {
                 KudoLogEntry(
                     timestamp = now,
                     text = item.title,
-                    value = -item.cost,
-                    type = "store",
-                    itemData = KudoLogItemData.fromStoreItem(item)
+                    coins = -item.cost,
+                    kind = KudoLogKind.Store,
+                    subject = KudoLogSubject.Store.fromStoreItem(item)
                 )
             ) + state.logs
         )
@@ -218,39 +218,39 @@ object KudoReducer {
 
     fun undoLog(state: KudoState, index: Int): KudoState {
         val log = state.logs.getOrNull(index) ?: return state
-        var nextState = state.copy(coins = state.coins - log.value)
+        var nextState = state.copy(coins = state.coins - log.coins)
 
-        log.itemData?.let { itemData ->
-            when (log.type) {
-                "task" -> {
-                    val exists = nextState.tasks.firstOrNull { it.id == itemData.id }
-                    val snapshot = itemData.toTask()
-                    nextState = if (log.subtaskId != null && itemData.type == KudoState.TYPE_TASK) {
-                        nextState.copy(tasks = restoreTaskSnapshot(nextState.tasks, snapshot))
-                    } else if (exists == null && itemData.type == KudoState.TYPE_TASK) {
-                        nextState.copy(tasks = nextState.tasks + snapshot)
-                    } else if (exists != null && log.isHabit) {
-                        nextState.copy(
-                            tasks = nextState.tasks.map { task ->
-                                if (task.id == itemData.id) {
-                                    task.copy(count = (task.count - 1).coerceAtLeast(0))
-                                } else {
-                                    task
-                                }
+        when (val subject = log.subject) {
+            is KudoLogSubject.Task -> {
+                val exists = nextState.tasks.firstOrNull { it.id == subject.id }
+                val snapshot = subject.toTask()
+                nextState = if (log.subtaskId != null && subject.kind == KudoTaskKind.Task) {
+                    nextState.copy(tasks = restoreTaskSnapshot(nextState.tasks, snapshot))
+                } else if (exists == null && subject.kind == KudoTaskKind.Task) {
+                    nextState.copy(tasks = nextState.tasks + snapshot)
+                } else if (exists != null && log.isHabit) {
+                    nextState.copy(
+                        tasks = nextState.tasks.map { task ->
+                            if (task.id == subject.id) {
+                                task.copy(count = (task.count - 1).coerceAtLeast(0))
+                            } else {
+                                task
                             }
-                        )
-                    } else {
-                        nextState
-                    }
-                }
-
-                "store" -> {
-                    val exists = nextState.store.firstOrNull { it.id == itemData.id }
-                    if (exists == null && itemData.type == KudoState.STORE_ONCE) {
-                        nextState = nextState.copy(store = nextState.store + itemData.toStoreItem())
-                    }
+                        }
+                    )
+                } else {
+                    nextState
                 }
             }
+
+            is KudoLogSubject.Store -> {
+                val exists = nextState.store.firstOrNull { it.id == subject.id }
+                if (exists == null && subject.kind == KudoStoreKind.Once) {
+                    nextState = nextState.copy(store = nextState.store + subject.toStoreItem())
+                }
+            }
+
+            null -> Unit
         }
 
         return nextState.copy(logs = nextState.logs.filterIndexed { logIndex, _ -> logIndex != index })
@@ -260,7 +260,7 @@ object KudoReducer {
         state: KudoState,
         id: Long,
         title: String,
-        value: Int,
+        coins: Int,
         dueAtEpochMillis: Long?,
         subtaskDrafts: List<KudoSubtaskDraft>? = null,
         now: Long = System.currentTimeMillis()
@@ -269,12 +269,12 @@ object KudoReducer {
             tasks = state.tasks.map { task ->
                 if (task.id == id) {
                     val isLocked = task.isSubtaskStructureLocked
-                    val resolvedSubtasks = if (task.type == KudoState.TYPE_TASK && subtaskDrafts == null) {
+                    val resolvedSubtasks = if (task.kind == KudoTaskKind.Task && subtaskDrafts == null) {
                         task.subtasks
-                    } else if (task.type == KudoState.TYPE_TASK && !isLocked) {
+                    } else if (task.kind == KudoTaskKind.Task && !isLocked) {
                         createSubtasks(
                             drafts = subtaskDrafts.orEmpty(),
-                            totalValue = value,
+                            totalCoins = coins,
                             now = now
                         )
                     } else {
@@ -282,7 +282,7 @@ object KudoReducer {
                     }
                     task.copy(
                         title = title.ifBlank { task.title },
-                        valAmount = if (isLocked) task.valAmount else value,
+                        coins = if (isLocked) task.coins else coins,
                         dueAtEpochMillis = dueAtEpochMillis,
                         subtasks = resolvedSubtasks
                     )
@@ -293,12 +293,8 @@ object KudoReducer {
         )
     }
 
-    fun setTaskSortMode(state: KudoState, sortMode: Int): KudoState {
-        val sanitized = when (sortMode) {
-            KudoState.TASK_SORT_MANUAL -> KudoState.TASK_SORT_MANUAL
-            else -> KudoState.TASK_SORT_AUTO_DUE
-        }
-        return state.copy(taskSortMode = sanitized)
+    fun setTaskSortMode(state: KudoState, sortMode: KudoTaskSortMode): KudoState {
+        return state.copy(taskSortMode = sortMode)
     }
 
     fun updateStoreItem(state: KudoState, id: Long, title: String, cost: Int): KudoState {
@@ -329,7 +325,7 @@ object KudoReducer {
             state = state,
             orderedIds = orderedIds
         ) { task ->
-            task.type == KudoState.TYPE_HABIT
+            task.kind == KudoTaskKind.Habit
         }
     }
 
@@ -338,14 +334,14 @@ object KudoReducer {
             state = state,
             orderedIds = orderedIds
         ) { task ->
-            task.type == KudoState.TYPE_TASK
+            task.kind == KudoTaskKind.Task
         }
     }
 
     fun resetTaskOrder(state: KudoState): KudoState {
         val orderedIds = state.tasks
             .asSequence()
-            .filter { it.type == KudoState.TYPE_TASK }
+            .filter { it.kind == KudoTaskKind.Task }
             .sortedWith(
                 compareBy<KudoTask>(
                     { it.dueAtEpochMillis == null },
@@ -359,7 +355,7 @@ object KudoReducer {
 
         return setTaskSortMode(
             state = reorderTasks(state, orderedIds),
-            sortMode = KudoState.TASK_SORT_MANUAL
+            sortMode = KudoTaskSortMode.Manual
         )
     }
 
@@ -397,22 +393,22 @@ object KudoReducer {
         )
     }
 
-    private fun processGrowth(state: KudoState, value: Int): KudoState {
-        val average = if (state.recentVals.isNotEmpty()) {
-            state.recentVals.average()
+    private fun processGrowth(state: KudoState, coins: Int): KudoState {
+        val average = if (state.recentCoins.isNotEmpty()) {
+            state.recentCoins.average()
         } else {
-            value.toDouble()
+            coins.toDouble()
         }
-        val updatedMultiplier = if (value >= average) {
+        val updatedMultiplier = if (coins >= average) {
             (state.multiplier + 0.01f).coerceAtMost(1.20f)
         } else {
             (state.multiplier - 0.01f).coerceAtLeast(1.00f)
         }
-        val updatedRecentVals = (state.recentVals + value).takeLast(5)
+        val updatedRecentCoins = (state.recentCoins + coins).takeLast(5)
 
         return state.copy(
             multiplier = updatedMultiplier,
-            recentVals = updatedRecentVals
+            recentCoins = updatedRecentCoins
         )
     }
 
@@ -469,7 +465,7 @@ object KudoReducer {
 
     private fun createSubtasks(
         drafts: List<KudoSubtaskDraft>,
-        totalValue: Int,
+        totalCoins: Int,
         now: Long
     ): List<KudoSubtask> {
         val titles = drafts.mapNotNull { draft ->
@@ -478,14 +474,14 @@ object KudoReducer {
         if (titles.isEmpty()) return emptyList()
 
         val count = titles.size
-        val base = totalValue / count
-        val remainder = totalValue % count
+        val base = totalCoins / count
+        val remainder = totalCoins % count
 
         return titles.mapIndexed { index, title ->
             KudoSubtask(
                 id = now + index + 1L,
                 title = title,
-                valAmount = base + if (index < remainder) 1 else 0
+                coins = base + if (index < remainder) 1 else 0
             )
         }
     }

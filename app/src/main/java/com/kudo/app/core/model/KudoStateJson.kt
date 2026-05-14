@@ -8,7 +8,6 @@ import java.time.LocalDateTime
 import java.time.OffsetDateTime
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
-import kotlin.math.abs
 
 object KudoStateJson {
 
@@ -42,7 +41,7 @@ object KudoStateJson {
                     tasks = root.optJSONArray("tasks").toTaskList(),
                     store = root.optJSONArray("store").toStoreList(),
                     logs = logs,
-                    recentVals = logs.toRecentValues(),
+                    recentCoins = logs.toRecentCoins(),
                     multiplier = settings.optDouble("multiplier", root.optDouble("multiplier", 1.0)).toFloat(),
                     taskSortMode = settings.optString("taskSort", root.optString("taskSort", SORT_AUTO_DUE))
                         .toTaskSortMode(),
@@ -63,7 +62,7 @@ object KudoStateJson {
                 JSONObject()
                     .put("coins", state.coins)
                     .put("multiplier", state.multiplier.toDouble())
-                    .put("taskSort", state.taskSortMode.toTaskSortName())
+                    .put("taskSort", state.taskSortMode.toJsonName())
             )
             .put("tasks", state.tasks.toTaskJsonArray())
             .put("store", state.store.toStoreJsonArray())
@@ -80,10 +79,9 @@ object KudoStateJson {
     fun sanitize(state: KudoState): KudoState {
         return state.copy(
             tasks = state.tasks.map { task ->
-                task.copy(subtasks = if (task.type == KudoState.TYPE_HABIT) emptyList() else task.subtasks)
+                task.copy(subtasks = if (task.kind == KudoTaskKind.Habit) emptyList() else task.subtasks)
             },
-            logs = state.logs.sortedByDescending(KudoLogEntry::timestamp),
-            taskSortMode = sanitizeTaskSortMode(state.taskSortMode)
+            logs = state.logs.sortedByDescending(KudoLogEntry::timestamp)
         )
     }
 
@@ -94,8 +92,8 @@ object KudoStateJson {
                     JSONObject()
                         .put("id", task.id)
                         .put("title", task.title)
-                        .put("kind", task.type.toTaskKind())
-                        .put("coins", task.valAmount)
+                        .put("kind", task.kind.toJsonName())
+                        .put("coins", task.coins)
                         .apply {
                             if (task.isHabit) {
                                 put("count", task.count)
@@ -116,14 +114,14 @@ object KudoStateJson {
         return buildList(length()) {
             for (index in 0 until length()) {
                 val json = optJSONObject(index) ?: continue
-                val id = json.optLong("id", System.currentTimeMillis() + index)
+                val id = json.optLong("id", KudoIds.next())
                 val kind = json.optString("kind", json.optString("type", KIND_TASK))
                 add(
                     KudoTask(
                         id = id,
                         title = json.optString("title", ""),
-                        valAmount = json.optInt("coins", json.optInt("value", 0)),
-                        type = kind.toTaskType(),
+                        coins = json.optInt("coins", json.optInt("value", 0)),
+                        kind = kind.toTaskKind(),
                         count = json.optInt("count", 0),
                         last = json.optStringOrNull("lastDone")
                             ?.toEpochMillisOrNull()
@@ -145,7 +143,7 @@ object KudoStateJson {
                     JSONObject()
                         .put("id", subtask.id)
                         .put("title", subtask.title)
-                        .put("coins", subtask.valAmount)
+                        .put("coins", subtask.coins)
                         .apply {
                             subtask.completedAt?.let { put("doneAt", it.toIsoString()) }
                         }
@@ -161,9 +159,9 @@ object KudoStateJson {
                 val json = optJSONObject(index) ?: continue
                 add(
                     KudoSubtask(
-                        id = json.optLong("id", System.currentTimeMillis() + index),
+                        id = json.optLong("id", KudoIds.next()),
                         title = json.optString("title", ""),
-                        valAmount = json.optInt("coins", json.optInt("value", 0)),
+                        coins = json.optInt("coins", json.optInt("value", 0)),
                         completedAt = (json.optStringOrNull("doneAt") ?: json.optStringOrNull("completedAt"))
                             ?.toEpochMillisOrNull()
                     )
@@ -180,7 +178,7 @@ object KudoStateJson {
                         .put("id", item.id)
                         .put("title", item.title)
                         .put("coins", item.cost)
-                        .put("kind", item.type.toStoreKind())
+                        .put("kind", item.kind.toJsonName())
                 )
             }
         }
@@ -193,10 +191,10 @@ object KudoStateJson {
                 val json = optJSONObject(index) ?: continue
                 add(
                     KudoStoreItem(
-                        id = json.optLong("id", System.currentTimeMillis() + index),
+                        id = json.optLong("id", KudoIds.next()),
                         title = json.optString("title", ""),
                         cost = json.optInt("coins", json.optInt("cost", 0)),
-                        type = json.optString("kind", json.optString("type", STORE_ONCE)).toStoreType()
+                        kind = json.optString("kind", json.optString("type", STORE_ONCE)).toStoreKind()
                     )
                 )
             }
@@ -210,12 +208,12 @@ object KudoStateJson {
                     JSONObject()
                         .put("time", log.timestamp.toIsoString())
                         .put("title", log.text)
-                        .put("coins", log.value)
-                        .put("kind", log.type)
+                        .put("coins", log.coins)
+                        .put("kind", log.kind.toJsonName())
                         .apply {
-                            log.baseValue?.let { put("baseCoins", it) }
+                            log.baseCoins?.let { put("baseCoins", it) }
                             log.subtaskId?.let { put("subtaskId", it) }
-                            log.itemData?.let { put("undo", it.toUndoJson(log.type)) }
+                            log.subject?.let { put("undo", it.toUndoJson()) }
                         }
                 )
             }
@@ -227,23 +225,25 @@ object KudoStateJson {
         return buildList(length()) {
             for (index in 0 until length()) {
                 val json = optJSONObject(index) ?: continue
-                val kind = json.optString("kind", json.optString("type", ""))
+                val kindName = json.optString("kind", json.optString("type", ""))
+                val logKind = kindName.toLogKind()
                 val undoJson = json.optJSONObject("undo")
+                val subject = undoJson?.toLogSubject(logKind)
                 add(
                     KudoLogEntry(
                         timestamp = (json.optStringOrNull("time") ?: json.optString("timestamp", ""))
                             .toEpochMillisOrZero(),
                         text = json.optString("title", json.optString("text", "")),
-                        value = json.optInt("coins", json.optInt("value", 0)),
-                        baseValue = if (json.has("baseCoins")) {
+                        coins = json.optInt("coins", json.optInt("value", 0)),
+                        baseCoins = if (json.has("baseCoins")) {
                             json.optInt("baseCoins", 0)
                         } else if (json.has("baseValue")) {
                             json.optInt("baseValue", 0)
                         } else {
                             null
                         },
-                        type = kind,
-                        taskId = if (kind == KIND_STORE) null else undoJson?.optLong("id"),
+                        kind = logKind,
+                        taskId = if (logKind == KudoLogKind.Store) null else undoJson?.optLong("id"),
                         subtaskId = if (json.has("subtaskId")) {
                             json.optLong("subtaskId")
                         } else if (json.has("completedSubtaskId")) {
@@ -251,53 +251,56 @@ object KudoStateJson {
                         } else {
                             null
                         },
-                        isHabit = undoJson?.optString("kind") == KIND_HABIT,
-                        itemData = undoJson?.toLogItemData(kind)
+                        isHabit = (subject as? KudoLogSubject.Task)?.kind == KudoTaskKind.Habit,
+                        subject = subject
                     )
                 )
             }
         }
     }
 
-    private fun KudoLogItemData.toUndoJson(logKind: String): JSONObject {
+    private fun KudoLogSubject.toUndoJson(): JSONObject {
         return JSONObject()
             .put("id", id)
             .put("title", title)
             .apply {
-                if (logKind == KIND_STORE) {
-                    cost?.let { put("coins", it) }
-                    put("kind", type.toStoreKind())
-                } else {
-                    valAmount?.let { put("coins", it) }
-                    put("kind", type.toTaskKind())
-                    if (type == KudoState.TYPE_HABIT) {
-                        put("count", count)
-                        last.toIsoStringOrNull()?.let { put("lastDone", it) }
+                when (val subject = this@toUndoJson) {
+                    is KudoLogSubject.Task -> {
+                        put("coins", subject.coins)
+                        put("kind", subject.kind.toJsonName())
+                        if (subject.kind == KudoTaskKind.Habit) {
+                            put("count", subject.count)
+                            subject.last.toIsoStringOrNull()?.let { put("lastDone", it) }
+                        }
+                        subject.dueAtEpochMillis?.let { put("due", it.toIsoString()) }
+                        if (subject.subtasks.isNotEmpty()) {
+                            put("subtasks", subject.subtasks.toSubtaskJsonArray())
+                        }
                     }
-                    dueAtEpochMillis?.let { put("due", it.toIsoString()) }
-                    if (subtasks.isNotEmpty()) {
-                        put("subtasks", subtasks.toSubtaskJsonArray())
+
+                    is KudoLogSubject.Store -> {
+                        put("coins", subject.cost)
+                        put("kind", subject.kind.toJsonName())
                     }
                 }
             }
     }
 
-    private fun JSONObject.toLogItemData(logKind: String): KudoLogItemData {
+    private fun JSONObject.toLogSubject(logKind: KudoLogKind): KudoLogSubject {
         val id = optLong("id", 0L)
-        return if (logKind == KIND_STORE) {
-            KudoLogItemData(
+        return when (logKind) {
+            KudoLogKind.Store -> KudoLogSubject.Store(
                 id = id,
                 title = optString("title", ""),
-                cost = if (has("coins")) optInt("coins", 0) else null,
-                type = optString("kind", STORE_ONCE).toStoreType()
+                cost = optInt("coins", 0),
+                kind = optString("kind", STORE_ONCE).toStoreKind()
             )
-        } else {
-            val kind = optString("kind", KIND_TASK)
-            KudoLogItemData(
+
+            KudoLogKind.Task -> KudoLogSubject.Task(
                 id = id,
                 title = optString("title", ""),
-                valAmount = if (has("coins")) optInt("coins", 0) else null,
-                type = kind.toTaskType(),
+                coins = optInt("coins", 0),
+                kind = optString("kind", KIND_TASK).toTaskKind(),
                 count = optInt("count", 0),
                 last = optString("lastDone", "").toEpochMillisOrZero(),
                 order = optLong("order", id),
@@ -326,7 +329,7 @@ object KudoStateJson {
         return buildList(length()) {
             for (index in 0 until length()) {
                 val json = optJSONObject(index) ?: continue
-                val id = json.optLong("id", System.currentTimeMillis() + index)
+                val id = json.optLong("id", KudoIds.next())
                 add(
                     KudoNote(
                         id = id,
@@ -341,11 +344,11 @@ object KudoStateJson {
         }
     }
 
-    private fun List<KudoLogEntry>.toRecentValues(): List<Int> {
+    private fun List<KudoLogEntry>.toRecentCoins(): List<Int> {
         return asSequence()
-            .filter { it.type == KIND_TASK && it.value > 0 }
+            .filter { it.kind == KudoLogKind.Task && it.coins > 0 }
             .sortedBy(KudoLogEntry::timestamp)
-            .map { it.baseValue ?: it.value }
+            .map { it.baseCoins ?: it.coins }
             .toList()
             .takeLast(5)
     }
@@ -391,53 +394,43 @@ object KudoStateJson {
         return toEpochMillisOrNull() ?: 0L
     }
 
-    private fun Int.toTaskKind(): String {
-        return when (this) {
-            KudoState.TYPE_HABIT -> KIND_HABIT
-            else -> KIND_TASK
-        }
+    private fun KudoTaskKind.toJsonName(): String = when (this) {
+        KudoTaskKind.Habit -> KIND_HABIT
+        KudoTaskKind.Task -> KIND_TASK
     }
 
-    private fun String.toTaskType(): Int {
-        return when (this) {
-            KIND_HABIT -> KudoState.TYPE_HABIT
-            else -> KudoState.TYPE_TASK
-        }
+    private fun String.toTaskKind(): KudoTaskKind = when (this) {
+        KIND_HABIT -> KudoTaskKind.Habit
+        else -> KudoTaskKind.Task
     }
 
-    private fun Int.toStoreKind(): String {
-        return when (this) {
-            KudoState.STORE_INFINITE -> STORE_REPEATABLE
-            else -> STORE_ONCE
-        }
+    private fun KudoStoreKind.toJsonName(): String = when (this) {
+        KudoStoreKind.Repeatable -> STORE_REPEATABLE
+        KudoStoreKind.Once -> STORE_ONCE
     }
 
-    private fun String.toStoreType(): Int {
-        return when (this) {
-            STORE_REPEATABLE -> KudoState.STORE_INFINITE
-            else -> KudoState.STORE_ONCE
-        }
+    private fun String.toStoreKind(): KudoStoreKind = when (this) {
+        STORE_REPEATABLE -> KudoStoreKind.Repeatable
+        else -> KudoStoreKind.Once
     }
 
-    private fun Int.toTaskSortName(): String {
-        return when (this) {
-            KudoState.TASK_SORT_MANUAL -> SORT_MANUAL
-            else -> SORT_AUTO_DUE
-        }
+    private fun KudoLogKind.toJsonName(): String = when (this) {
+        KudoLogKind.Task -> KIND_TASK
+        KudoLogKind.Store -> KIND_STORE
     }
 
-    private fun String.toTaskSortMode(): Int {
-        return when (this) {
-            SORT_MANUAL -> KudoState.TASK_SORT_MANUAL
-            else -> KudoState.TASK_SORT_AUTO_DUE
-        }
+    private fun String.toLogKind(): KudoLogKind = when (this) {
+        KIND_STORE -> KudoLogKind.Store
+        else -> KudoLogKind.Task
     }
 
-    private fun sanitizeTaskSortMode(mode: Int): Int {
-        return when (mode) {
-            KudoState.TASK_SORT_AUTO_DUE,
-            KudoState.TASK_SORT_MANUAL -> mode
-            else -> KudoState.TASK_SORT_AUTO_DUE
-        }
+    private fun KudoTaskSortMode.toJsonName(): String = when (this) {
+        KudoTaskSortMode.Manual -> SORT_MANUAL
+        KudoTaskSortMode.AutoDue -> SORT_AUTO_DUE
+    }
+
+    private fun String.toTaskSortMode(): KudoTaskSortMode = when (this) {
+        SORT_MANUAL -> KudoTaskSortMode.Manual
+        else -> KudoTaskSortMode.AutoDue
     }
 }

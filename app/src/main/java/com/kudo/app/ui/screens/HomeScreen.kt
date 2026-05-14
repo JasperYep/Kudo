@@ -169,11 +169,15 @@ import androidx.compose.ui.zIndex
 import androidx.core.content.ContextCompat
 import com.kudo.app.core.platform.KudoHaptics
 import com.kudo.app.core.model.KudoLogEntry
+import com.kudo.app.core.model.KudoLogKind
 import com.kudo.app.core.model.KudoState
 import com.kudo.app.core.model.KudoStoreItem
+import com.kudo.app.core.model.KudoStoreKind
 import com.kudo.app.core.model.KudoSubtask
 import com.kudo.app.core.model.KudoSubtaskDraft
 import com.kudo.app.core.model.KudoTask
+import com.kudo.app.core.model.KudoTaskKind
+import com.kudo.app.core.model.KudoTaskSortMode
 import com.kudo.app.core.repository.KudoStateRepository
 import com.kudo.app.ui.theme.DarkBackground
 import com.kudo.app.ui.theme.DarkBlue
@@ -203,8 +207,8 @@ import com.kudo.app.ui.theme.LightTextMain
 import com.kudo.app.ui.theme.LightTextSub
 import com.kudo.app.ui.viewmodel.EditingTarget
 import com.kudo.app.ui.viewmodel.KudoUiState
+import com.kudo.app.ui.viewmodel.KudoView
 import com.kudo.app.ui.viewmodel.KudoViewModel
-import com.kudo.app.ui.viewmodel.TaskCreationTarget
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
@@ -243,7 +247,7 @@ fun HomeScreen(
     val tasksListState = rememberLazyListState()
     val storeListState = rememberLazyListState()
     val logListState = rememberLazyListState()
-    LaunchedEffect(uiState.currentView) {
+    LaunchedEffect(uiState.view.currentView) {
         activeComposerRevealProgress = 0f
     }
     val exportLauncher = rememberLauncherForActivityResult(
@@ -278,7 +282,7 @@ fun HomeScreen(
         derivedStateOf {
             val now = System.currentTimeMillis()
             uiState.data.tasks.any { task ->
-                task.type == KudoState.TYPE_TASK &&
+                task.kind == KudoTaskKind.Task &&
                     (task.dueAtEpochMillis ?: 0L) > now
             }
         }
@@ -346,8 +350,8 @@ fun HomeScreen(
                     .fillMaxWidth()
                     .weight(1f)
             ) {
-                when (uiState.currentView) {
-                    KudoViewModel.VIEW_TASKS -> PullComposerPage(
+                when (uiState.view.currentView) {
+                    KudoView.Tasks -> PullComposerPage(
                         uiState = uiState,
                         palette = palette,
                         title = taskDraftTitle,
@@ -388,7 +392,7 @@ fun HomeScreen(
                         )
                     }
 
-                    KudoViewModel.VIEW_STORE -> PullComposerPage(
+                    KudoView.Store -> PullComposerPage(
                         uiState = uiState,
                         palette = palette,
                         title = storeDraftTitle,
@@ -421,7 +425,7 @@ fun HomeScreen(
                         )
                     }
 
-                    KudoViewModel.VIEW_LOG -> LogPage(
+                    KudoView.Log -> LogPage(
                         uiState = uiState,
                         palette = palette,
                         modifier = Modifier.fillMaxSize(),
@@ -432,7 +436,7 @@ fun HomeScreen(
                 }
 
                 UndoBanner(
-                    visible = uiState.showUndoBanner,
+                    visible = uiState.view.showUndoBanner,
                     latestLog = uiState.data.logs.firstOrNull(),
                     palette = palette,
                     onUndo = { viewModel.undoLog(0) },
@@ -445,7 +449,7 @@ fun HomeScreen(
         }
     }
 
-    if (uiState.isNotebookVisible) {
+    if (uiState.view.isNotebookVisible) {
         NotebookOverlay(
             uiState = uiState,
             palette = palette,
@@ -458,7 +462,7 @@ fun HomeScreen(
         )
     }
 
-    if (uiState.isSettingsVisible) {
+    if (uiState.view.settingsVisible) {
         SettingsSheet(
             uiState = uiState,
             palette = palette,
@@ -568,7 +572,7 @@ fun HomeScreen(
         )
     }
 
-    val editTarget = uiState.editingTarget
+    val editTarget = uiState.view.editingTarget
 
     if (editTarget != null) {
         EditSheet(
@@ -1142,28 +1146,28 @@ private fun DashboardCard(
 ) {
     val haptics = rememberKudoHaptics()
     val titlePlaceholder = when {
-        uiState.currentView == KudoViewModel.VIEW_STORE -> "Add to Store..."
-        uiState.taskCreationTarget == TaskCreationTarget.HABIT -> "Add Habit..."
+        uiState.view.currentView == KudoView.Store -> "Add to Store..."
+        uiState.view.taskCreationTarget == KudoTaskKind.Habit -> "Add Habit..."
         else -> "Add Task..."
     }
     val valuePlaceholder = when {
-        uiState.currentView == KudoViewModel.VIEW_STORE -> "0"
-        uiState.taskCreationTarget == TaskCreationTarget.HABIT -> "10"
+        uiState.view.currentView == KudoView.Store -> "0"
+        uiState.view.taskCreationTarget == KudoTaskKind.Habit -> "10"
         else -> "" // Suggests it is completely optional
     }
     val modeText = when {
-        uiState.currentView == KudoViewModel.VIEW_STORE && uiState.storeMode == KudoState.STORE_INFINITE -> "INFIN"
-        uiState.currentView == KudoViewModel.VIEW_STORE -> "ONCE"
-        uiState.taskCreationTarget == TaskCreationTarget.HABIT -> "HABIT"
+        uiState.view.currentView == KudoView.Store && uiState.view.storeMode == KudoStoreKind.Repeatable -> "INFIN"
+        uiState.view.currentView == KudoView.Store -> "ONCE"
+        uiState.view.taskCreationTarget == KudoTaskKind.Habit -> "HABIT"
         else -> "TASK"
     }
     val modeColor = when {
-        uiState.currentView == KudoViewModel.VIEW_STORE -> palette.orange
-        uiState.taskCreationTarget == TaskCreationTarget.HABIT -> palette.gold
+        uiState.view.currentView == KudoView.Store -> palette.orange
+        uiState.view.taskCreationTarget == KudoTaskKind.Habit -> palette.gold
         else -> palette.green
     }
     val valueColor = when {
-        uiState.currentView == KudoViewModel.VIEW_STORE -> palette.orange
+        uiState.view.currentView == KudoView.Store -> palette.orange
         value.isBlank() || value == "0" -> palette.textSub
         else -> palette.green
     }
@@ -1327,20 +1331,20 @@ private fun TasksPage(
     var isTaskSwipeGestureLocked by remember { mutableStateOf(false) }
     var isTaskLongPressGestureLocked by remember { mutableStateOf(false) }
     val habits = remember(uiState.data.tasks) {
-        uiState.data.tasks.filter { it.type == KudoState.TYPE_HABIT }
+        uiState.data.tasks.filter { it.kind == KudoTaskKind.Habit }
     }
     var localHabits by remember { mutableStateOf(habits) }
     val currentSortMode = uiState.data.taskSortMode
     val tasks = remember(uiState.data.tasks, currentSortMode) {
         sortTasksForDisplay(
-            tasks = uiState.data.tasks.filter { it.type == KudoState.TYPE_TASK },
+            tasks = uiState.data.tasks.filter { it.kind == KudoTaskKind.Task },
             sortMode = currentSortMode
         )
     }
 
     var localTasks by remember { mutableStateOf(tasks) }
     var lastTaskSwapHapticAtMs by remember { mutableStateOf(0L) }
-    val newTopTaskId = localTasks.lastOrNull()?.id?.takeIf { it == uiState.recentTaskInsertId }
+    val newTopTaskId = localTasks.lastOrNull()?.id?.takeIf { it == uiState.view.recentTaskInsertId }
     var expandedTaskIds by rememberSaveable { mutableStateOf(emptyList<Long>()) }
     LaunchedEffect(tasks.map(KudoTask::id)) {
         expandedTaskIds = expandedTaskIds.filter { expandedId ->
@@ -1418,8 +1422,8 @@ private fun TasksPage(
     LaunchedEffect(isListGestureLocked) {
         onGestureLockChange(isListGestureLocked)
     }
-    LaunchedEffect(uiState.isHabitJiggleMode) {
-        if (!uiState.isHabitJiggleMode) {
+    LaunchedEffect(uiState.view.habitJiggleMode) {
+        if (!uiState.view.habitJiggleMode) {
             isHabitGestureLocked = false
         }
     }
@@ -1444,7 +1448,7 @@ private fun TasksPage(
                     title = "Habits",
                     palette = palette,
                     collapsible = true,
-                    collapsed = uiState.habitsCollapsed,
+                    collapsed = uiState.view.habitsCollapsed,
                     onClick = {
                         onExitHabitJiggle()
                         onToggleHabits()
@@ -1453,7 +1457,7 @@ private fun TasksPage(
             }
             item(key = "habits_grid") {
                 AnimatedVisibility(
-                    visible = !uiState.habitsCollapsed,
+                    visible = !uiState.view.habitsCollapsed,
                     modifier = Modifier.clipToBounds(),
                     enter = fadeIn(animationSpec = tween(150)) + expandVertically(
                         animationSpec = spring(
@@ -1469,7 +1473,7 @@ private fun TasksPage(
                         habits = localHabits,
                         palette = palette,
                         finalMultiplier = uiState.data.multiplier,
-                        isJiggleMode = uiState.isHabitJiggleMode,
+                        isJiggleMode = uiState.view.habitJiggleMode,
                         modifier = Modifier.padding(horizontal = 16.dp),
                         onGestureLockChange = { isHabitGestureLocked = it },
                         onHabitsChange = { localHabits = it },
@@ -1503,7 +1507,7 @@ private fun TasksPage(
                     modifier = Modifier
                         .fillMaxWidth()
                         .then(
-                            if (uiState.isHabitJiggleMode) {
+                            if (uiState.view.habitJiggleMode) {
                                 Modifier.clickable(
                                     interactionSource = remember { MutableInteractionSource() },
                                     indication = null
@@ -1611,7 +1615,7 @@ private fun StorePage(
     var isStoreItemGestureLocked by remember { mutableStateOf(false) }
     val storeOrderIds = remember(uiState.data.store) { uiState.data.store.map(KudoStoreItem::id) }
     val localStoreOrderIds = remember(localStore) { localStore.map(KudoStoreItem::id) }
-    val newTopStoreId = localStore.firstOrNull()?.id?.takeIf { it == uiState.recentStoreInsertId }
+    val newTopStoreId = localStore.firstOrNull()?.id?.takeIf { it == uiState.view.recentStoreInsertId }
     val storeIds = remember(localStore) { localStore.map(KudoStoreItem::id).toSet() }
     val latestLocalStore by rememberUpdatedState(localStore)
     val latestStoreOrderIds by rememberUpdatedState(storeOrderIds)
@@ -2223,7 +2227,7 @@ private fun SectionHeader(
 
 @Composable
 private fun TaskQueueHeader(
-    sortMode: Int,
+    sortMode: KudoTaskSortMode,
     palette: KudoPalette,
     onLongPress: () -> Unit
 ) {
@@ -2283,7 +2287,7 @@ private fun TaskQueueHeader(
             fontWeight = FontWeight.Bold,
             letterSpacing = 1.sp
         )
-        if (sortMode == KudoState.TASK_SORT_AUTO_DUE) {
+        if (sortMode == KudoTaskSortMode.AutoDue) {
             Text(
                 text = "by date",
                 color = palette.textSub.copy(alpha = 0.5f),
@@ -2356,8 +2360,8 @@ private fun HabitChip(
     val shape = RoundedCornerShape(16.dp)
     val jiggleRotation = rememberHabitJiggleRotation(isJiggleMode)
     val completedToday = remember(task.last) { isToday(task.last) }
-    val value = remember(task.valAmount, finalMultiplier) {
-        (task.valAmount * finalMultiplier).toInt()
+    val value = remember(task.coins, finalMultiplier) {
+        (task.coins * finalMultiplier).toInt()
     }
     var isCharging by remember(task.id) { mutableStateOf(false) }
     var chargeJob by remember(task.id) { mutableStateOf<Job?>(null) }
@@ -2576,7 +2580,7 @@ private fun TaskRow(
     onEdit: () -> Unit
 ) {
     val haptics = rememberKudoHaptics()
-    val reward = (task.remainingValue * finalMultiplier).toInt()
+    val reward = (task.remainingCoins * finalMultiplier).toInt()
     val dueBadge = remember(task.dueAtEpochMillis, palette) {
         task.dueAtEpochMillis?.let { dueBadgeFor(it, palette) }
     }
@@ -2744,7 +2748,7 @@ private fun SubtaskRow(
     finalMultiplier: Float,
     onComplete: () -> Unit
 ) {
-    val reward = (subtask.valAmount * finalMultiplier).toInt()
+    val reward = (subtask.coins * finalMultiplier).toInt()
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -2852,7 +2856,7 @@ private fun StoreRow(
                     fontWeight = FontWeight.Medium
                 )
                 Text(
-                    text = if (item.type == KudoState.STORE_INFINITE) "Infinite" else "One-time",
+                    text = if (item.kind == KudoStoreKind.Repeatable) "Infinite" else "One-time",
                     color = palette.textSub,
                     fontSize = 11.sp
                 )
@@ -3248,7 +3252,7 @@ private fun LogRow(
     onUndo: () -> Unit
 ) {
     val haptics = rememberKudoHaptics()
-    val valueColor = if (log.type == "store") palette.orange else palette.green
+    val valueColor = if (log.kind == KudoLogKind.Store) palette.orange else palette.green
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -3277,7 +3281,7 @@ private fun LogRow(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                text = if (log.value > 0) "+${log.value}" else log.value.toString(),
+                text = if (log.coins > 0) "+${log.coins}" else log.coins.toString(),
                 color = valueColor,
                 fontSize = 14.sp,
                 fontWeight = FontWeight.Bold
@@ -3352,7 +3356,7 @@ private fun UndoBanner(
 private fun BottomTabs(
     uiState: KudoUiState,
     palette: KudoPalette,
-    onViewSelected: (String) -> Unit
+    onViewSelected: (KudoView) -> Unit
 ) {
     Surface(
         color = palette.card,
@@ -3366,30 +3370,30 @@ private fun BottomTabs(
         ) {
             BottomTabItem(
                 modifier = Modifier.weight(1f),
-                selected = uiState.currentView == KudoViewModel.VIEW_TASKS,
+                selected = uiState.view.currentView == KudoView.Tasks,
                 label = "Tasks",
                 icon = Icons.Rounded.CheckCircle,
                 selectedColor = palette.green,
                 mutedColor = palette.textSub,
-                onClick = { onViewSelected(KudoViewModel.VIEW_TASKS) }
+                onClick = { onViewSelected(KudoView.Tasks) }
             )
             BottomTabItem(
                 modifier = Modifier.weight(1f),
-                selected = uiState.currentView == KudoViewModel.VIEW_STORE,
+                selected = uiState.view.currentView == KudoView.Store,
                 label = "Store",
                 icon = Icons.Rounded.CardGiftcard,
                 selectedColor = palette.orange,
                 mutedColor = palette.textSub,
-                onClick = { onViewSelected(KudoViewModel.VIEW_STORE) }
+                onClick = { onViewSelected(KudoView.Store) }
             )
             BottomTabItem(
                 modifier = Modifier.weight(1f),
-                selected = uiState.currentView == KudoViewModel.VIEW_LOG,
+                selected = uiState.view.currentView == KudoView.Log,
                 label = "Log",
                 icon = Icons.Rounded.BarChart,
                 selectedColor = palette.textMain,
                 mutedColor = palette.textSub,
-                onClick = { onViewSelected(KudoViewModel.VIEW_LOG) }
+                onClick = { onViewSelected(KudoView.Log) }
             )
         }
     }
@@ -3514,14 +3518,14 @@ internal data class DueBadge(
 
 private fun sortTasksForDisplay(
     tasks: List<KudoTask>,
-    sortMode: Int
+    sortMode: KudoTaskSortMode
 ): List<KudoTask> {
     return when (sortMode) {
-        KudoState.TASK_SORT_MANUAL -> tasks.sortedWith(
+        KudoTaskSortMode.Manual -> tasks.sortedWith(
             compareBy<KudoTask>({ it.order }, { it.id })
         )
 
-        else -> tasks.sortedWith(
+        KudoTaskSortMode.AutoDue -> tasks.sortedWith(
             compareBy<KudoTask>(
                 { it.dueAtEpochMillis == null },
                 { it.dueAtEpochMillis ?: Long.MAX_VALUE }
@@ -3595,8 +3599,8 @@ private fun buildTrend(logs: List<KudoLogEntry>, positive: Boolean): List<Float>
 
     logs.forEach { log ->
         val amount = when {
-            positive && log.value > 0 -> log.value.toFloat()
-            !positive && log.value < 0 -> (-log.value).toFloat()
+            positive && log.coins > 0 -> log.coins.toFloat()
+            !positive && log.coins < 0 -> (-log.coins).toFloat()
             else -> return@forEach
         }
         val logDate = Instant.ofEpochMilli(log.timestamp)
