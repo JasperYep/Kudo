@@ -1,45 +1,43 @@
-# Kudo PWA → Android 原生 1:1 还原清单
+# Kudo Android Native Checklist
 
-本清单以 `original/kudo_v2.2.0` 为唯一功能基准，用于约束 Android 原生版的功能、交互、视觉与数据格式。
+本清单用于约束 Android 原生版的功能、交互、视觉与数据格式。备份 JSON 不再追随旧 PWA 缩写格式，以当前原生版的人类可读格式为准。
 
 ## 1. 核心数据结构
 
-- [ ] 保持与 PWA 备份 JSON 兼容的顶层状态结构
+- [ ] 保持人类可读的备份 JSON 顶层状态结构
   - [ ] `coins`
-  - [ ] `life`
-  - [ ] `maxCoins`
+  - [ ] `multiplier`
+  - [ ] `taskSort`
+  - [ ] `recentValues`
   - [ ] `tasks`
   - [ ] `store`
   - [ ] `logs`
-  - [ ] `recentVals`
-  - [ ] `multiplier`
-  - [ ] `listMode`
-- [ ] `tasks` 项字段与原版兼容
+  - [ ] `notes`
+- [ ] `tasks` 项字段使用完整语义名
   - [ ] `id`
   - [ ] `title`
-  - [ ] `val`
-  - [ ] `type` (`0=task`, `1=habit`)
+  - [ ] `value`
+  - [ ] `type` (`task` / `habit`)
   - [ ] `count`
-  - [ ] `last`
-  - [ ] `list` (`focus` / `inbox`)
   - [ ] `order`
-- [ ] `store` 项字段与原版兼容
+  - [ ] `lastCompletedAt`
+  - [ ] `dueAt`
+  - [ ] `subtasks`
+- [ ] `store` 项字段使用完整语义名
   - [ ] `id`
   - [ ] `title`
   - [ ] `cost`
-  - [ ] `type` (`0=one-time`, `1=infinite`)
-- [ ] `logs` 项字段与原版兼容
-  - [ ] `t`
-  - [ ] `txt`
-  - [ ] `v`
+  - [ ] `type` (`once` / `repeatable`)
+- [ ] `logs` 项字段可读、可手写
+  - [ ] `timestamp`
+  - [ ] `text`
+  - [ ] `value`
   - [ ] `type`
-  - [ ] `taskId`
+  - [ ] `baseValue`
+  - [ ] `completedSubtaskId`
   - [ ] `isHabit`
-  - [ ] `itemData`
-- [ ] 启动时执行原版同等的数据清洗
-  - [ ] 缺失 `list` 的任务自动修正
-  - [ ] 非法 `list` 值自动纠正为 `focus`
-  - [ ] 缺失 `order` 自动补齐
+  - [ ] `taskSnapshot`
+  - [ ] `storeItemSnapshot`
 
 ## 2. 游戏机制
 
@@ -198,8 +196,8 @@
 
 ## 14. 备份与恢复
 
-- [ ] 导出 JSON 内容与原版兼容
-- [ ] 导入原版 JSON 后可直接运行
+- [ ] 导出 JSON 使用缩进、完整字段名、ISO-8601 时间
+- [ ] 导入当前人类可读 JSON 后可直接运行
 - [ ] 导入前确认覆盖
 - [ ] 导入后完整刷新状态
 - [ ] Android 原生分享 / 文件导出体验
@@ -229,6 +227,5 @@
 - [ ] 当前 `LogEntity` 缺少 `itemData`
 - [ ] 当前完成任务逻辑未使用最终倍率
 - [ ] 当前 UI 未接通真实状态流
-- [ ] 当前缺少原版备份 JSON 兼容层
+- [ ] 备份 JSON 已切到原生版人类可读格式
 - [ ] 当前未实现原版核心手势链路
-
