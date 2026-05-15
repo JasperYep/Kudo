@@ -103,20 +103,26 @@ class KudoViewModel(application: Application) : AndroidViewModel(application) {
 
         viewModelScope.launch {
             repository.updateState { state ->
-                if (isStoreInsert) {
-                    KudoReducer.addStoreItem(
+                when {
+                    isStoreInsert -> KudoReducer.addStoreItem(
                         state = state,
                         title = trimmedTitle,
                         cost = parsedValue,
                         kind = view.storeMode,
                         now = createdId
                     )
-                } else {
-                    KudoReducer.addTask(
+
+                    view.taskCreationTarget == KudoTaskKind.Habit -> KudoReducer.addHabit(
                         state = state,
                         title = trimmedTitle,
                         coins = parsedValue,
-                        kind = view.taskCreationTarget,
+                        now = createdId
+                    )
+
+                    else -> KudoReducer.addTask(
+                        state = state,
+                        title = trimmedTitle,
+                        coins = parsedValue,
                         now = createdId
                     )
                 }
@@ -194,6 +200,10 @@ class KudoViewModel(application: Application) : AndroidViewModel(application) {
         viewState.update { it.copy(editingTarget = EditingTarget(kind = KudoEditKind.Task, id = id)) }
     }
 
+    fun openEditHabit(id: Long) {
+        viewState.update { it.copy(editingTarget = EditingTarget(kind = KudoEditKind.Habit, id = id)) }
+    }
+
     fun openEditStore(id: Long) {
         viewState.update { it.copy(editingTarget = EditingTarget(kind = KudoEditKind.Store, id = id)) }
     }
@@ -229,6 +239,13 @@ class KudoViewModel(application: Application) : AndroidViewModel(application) {
                         now = editTimestamp
                     )
 
+                    KudoEditKind.Habit -> KudoReducer.updateHabit(
+                        state = state,
+                        id = target.id,
+                        title = sanitizedTitle,
+                        coins = parsedValue
+                    )
+
                     KudoEditKind.Store -> KudoReducer.updateStoreItem(
                         state = state,
                         id = target.id,
@@ -247,6 +264,7 @@ class KudoViewModel(application: Application) : AndroidViewModel(application) {
             repository.updateState { state ->
                 when (target.kind) {
                     KudoEditKind.Task -> KudoReducer.deleteTask(state, target.id)
+                    KudoEditKind.Habit -> KudoReducer.deleteHabit(state, target.id)
                     KudoEditKind.Store -> KudoReducer.deleteStoreItem(state, target.id)
                 }
             }
@@ -301,6 +319,10 @@ class KudoViewModel(application: Application) : AndroidViewModel(application) {
 
     fun deleteTaskItem(id: Long) {
         launchStateUpdate { state -> KudoReducer.deleteTask(state, id) }
+    }
+
+    fun deleteHabitItem(id: Long) {
+        launchStateUpdate { state -> KudoReducer.deleteHabit(state, id) }
     }
 
     fun setTheme(theme: String) {
@@ -423,7 +445,7 @@ class KudoViewModel(application: Application) : AndroidViewModel(application) {
 
 enum class KudoView { Tasks, Store, Log }
 
-enum class KudoEditKind { Task, Store }
+enum class KudoEditKind { Task, Habit, Store }
 
 @Immutable
 data class KudoViewState(

@@ -16,7 +16,6 @@ import com.kudo.app.MainActivity
 import com.kudo.app.R
 import com.kudo.app.core.model.KudoState
 import com.kudo.app.core.model.KudoTask
-import com.kudo.app.core.model.KudoTaskKind
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -47,9 +46,7 @@ class KudoReminderScheduler(
         previousReminderIds().forEach(::cancelReminder)
 
         val futureTasks = state.tasks.filter { task ->
-            task.kind == KudoTaskKind.Task &&
-                task.dueAtEpochMillis != null &&
-                task.dueAtEpochMillis > now
+            task.dueAtEpochMillis != null && task.dueAtEpochMillis > now
         }
 
         futureTasks.forEach(::scheduleReminder)

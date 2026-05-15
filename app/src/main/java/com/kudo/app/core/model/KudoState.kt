@@ -6,6 +6,7 @@ import androidx.compose.runtime.Immutable
 data class KudoState(
     val coins: Int = 0,
     val tasks: List<KudoTask> = emptyList(),
+    val habits: List<KudoHabit> = emptyList(),
     val store: List<KudoStoreItem> = emptyList(),
     val logs: List<KudoLogEntry> = emptyList(),
     val recentCoins: List<Int> = emptyList(),
@@ -20,23 +21,17 @@ enum class KudoStoreKind { Once, Repeatable }
 
 enum class KudoTaskSortMode { AutoDue, Manual }
 
-enum class KudoLogKind { Task, Store }
+enum class KudoLogKind { Task, Habit, Store }
 
 @Immutable
 data class KudoTask(
     val id: Long,
     val title: String,
     val coins: Int,
-    val kind: KudoTaskKind,
-    val count: Int = 0,
-    val last: Long = 0L,
     val order: Long = id,
     val dueAtEpochMillis: Long? = null,
     val subtasks: List<KudoSubtask> = emptyList()
 ) {
-    val isHabit: Boolean
-        get() = kind == KudoTaskKind.Habit
-
     val hasSubtasks: Boolean
         get() = subtasks.isNotEmpty()
 
@@ -55,6 +50,16 @@ data class KudoTask(
 }
 
 @Immutable
+data class KudoHabit(
+    val id: Long,
+    val title: String,
+    val coins: Int,
+    val count: Int = 0,
+    val last: Long = 0L,
+    val order: Long = id
+)
+
+@Immutable
 data class KudoStoreItem(
     val id: Long,
     val title: String,
@@ -71,23 +76,18 @@ data class KudoLogEntry(
     val kind: KudoLogKind,
     val taskId: Long? = null,
     val subtaskId: Long? = null,
-    val isHabit: Boolean = false,
     val subject: KudoLogSubject? = null
 )
 
 @Immutable
 sealed interface KudoLogSubject {
     val id: Long
-    val title: String
 
     @Immutable
     data class Task(
         override val id: Long,
-        override val title: String,
+        val title: String,
         val coins: Int,
-        val kind: KudoTaskKind,
-        val count: Int = 0,
-        val last: Long = 0L,
         val order: Long = id,
         val dueAtEpochMillis: Long? = null,
         val subtasks: List<KudoSubtask> = emptyList()
@@ -96,9 +96,6 @@ sealed interface KudoLogSubject {
             id = id,
             title = title,
             coins = coins,
-            kind = kind,
-            count = count,
-            last = last,
             order = order,
             dueAtEpochMillis = dueAtEpochMillis,
             subtasks = subtasks
@@ -109,9 +106,6 @@ sealed interface KudoLogSubject {
                 id = task.id,
                 title = task.title,
                 coins = task.coins,
-                kind = task.kind,
-                count = task.count,
-                last = task.last,
                 order = task.order,
                 dueAtEpochMillis = task.dueAtEpochMillis,
                 subtasks = task.subtasks
@@ -120,9 +114,30 @@ sealed interface KudoLogSubject {
     }
 
     @Immutable
+    data class Habit(
+        override val id: Long,
+        val title: String,
+        val coins: Int,
+        val count: Int = 0,
+        val last: Long = 0L,
+        val order: Long = id
+    ) : KudoLogSubject {
+        companion object {
+            fun fromHabit(habit: KudoHabit): Habit = Habit(
+                id = habit.id,
+                title = habit.title,
+                coins = habit.coins,
+                count = habit.count,
+                last = habit.last,
+                order = habit.order
+            )
+        }
+    }
+
+    @Immutable
     data class Store(
         override val id: Long,
-        override val title: String,
+        val title: String,
         val cost: Int,
         val kind: KudoStoreKind
     ) : KudoLogSubject {

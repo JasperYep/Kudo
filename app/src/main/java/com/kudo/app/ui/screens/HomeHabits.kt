@@ -64,7 +64,7 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
-import com.kudo.app.core.model.KudoTask
+import com.kudo.app.core.model.KudoHabit
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
@@ -76,13 +76,13 @@ private val HabitGridItemHeight = 64.dp
 
 @Composable
 internal fun HabitsGrid(
-    habits: List<KudoTask>,
+    habits: List<KudoHabit>,
     palette: KudoPalette,
     finalMultiplier: Float,
     isJiggleMode: Boolean,
     modifier: Modifier = Modifier,
     onGestureLockChange: (Boolean) -> Unit,
-    onHabitsChange: (List<KudoTask>) -> Unit,
+    onHabitsChange: (List<KudoHabit>) -> Unit,
     onDragFinished: () -> Unit,
     onCompleteHabit: (Long) -> Unit,
     onEnterJiggle: () -> Unit,
@@ -195,7 +195,7 @@ internal fun HabitsGrid(
                     )
 
                     HabitChip(
-                        task = habit,
+                        habit = habit,
                         palette = palette,
                         finalMultiplier = finalMultiplier,
                         isJiggleMode = isJiggleMode,
@@ -363,7 +363,7 @@ private fun rememberHabitJiggleRotation(enabled: Boolean): Float {
 
 @Composable
 private fun HabitChip(
-    task: KudoTask,
+    habit: KudoHabit,
     palette: KudoPalette,
     finalMultiplier: Float,
     isJiggleMode: Boolean,
@@ -377,13 +377,13 @@ private fun HabitChip(
     val scope = rememberCoroutineScope()
     val shape = RoundedCornerShape(16.dp)
     val jiggleRotation = rememberHabitJiggleRotation(isJiggleMode)
-    val completedToday = remember(task.last) { isToday(task.last) }
-    val value = remember(task.coins, finalMultiplier) {
-        (task.coins * finalMultiplier).toInt()
+    val completedToday = remember(habit.last) { isToday(habit.last) }
+    val value = remember(habit.coins, finalMultiplier) {
+        (habit.coins * finalMultiplier).toInt()
     }
-    var isCharging by remember(task.id) { mutableStateOf(false) }
-    var chargeJob by remember(task.id) { mutableStateOf<Job?>(null) }
-    val chargeProgress = remember(task.id) { Animatable(0f) }
+    var isCharging by remember(habit.id) { mutableStateOf(false) }
+    var chargeJob by remember(habit.id) { mutableStateOf<Job?>(null) }
+    val chargeProgress = remember(habit.id) { Animatable(0f) }
     val dragScale by animateFloatAsState(
         targetValue = if (isDragging) 1.035f else 1f,
         animationSpec = spring(
@@ -431,7 +431,7 @@ private fun HabitChip(
         }
     }
 
-    DisposableEffect(task.id) {
+    DisposableEffect(habit.id) {
         onDispose {
             chargeJob?.cancel()
         }
@@ -551,7 +551,7 @@ private fun HabitChip(
                 modifier = Modifier.weight(1f)
             ) {
                 Text(
-                    text = task.title,
+                    text = habit.title,
                     color = palette.textMain,
                     fontSize = 14.sp,
                     fontWeight = FontWeight.SemiBold,
@@ -567,7 +567,7 @@ private fun HabitChip(
             }
             Spacer(modifier = Modifier.width(8.dp))
             Text(
-                text = if (completedToday) "x${task.count}" else if (isCharging) "..." else "Go",
+                text = if (completedToday) "x${habit.count}" else if (isCharging) "..." else "Go",
                 color = if (completedToday) palette.background else palette.textSub,
                 fontSize = 12.sp,
                 fontWeight = FontWeight.Bold,

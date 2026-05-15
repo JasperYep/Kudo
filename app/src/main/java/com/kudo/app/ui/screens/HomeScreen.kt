@@ -168,6 +168,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import androidx.core.content.ContextCompat
 import com.kudo.app.core.platform.KudoHaptics
+import com.kudo.app.core.model.KudoHabit
 import com.kudo.app.core.model.KudoLogEntry
 import com.kudo.app.core.model.KudoLogKind
 import com.kudo.app.core.model.KudoState
@@ -282,8 +283,7 @@ fun HomeScreen(
         derivedStateOf {
             val now = System.currentTimeMillis()
             uiState.data.tasks.any { task ->
-                task.kind == KudoTaskKind.Task &&
-                    (task.dueAtEpochMillis ?: 0L) > now
+                (task.dueAtEpochMillis ?: 0L) > now
             }
         }
     }
@@ -381,7 +381,7 @@ fun HomeScreen(
                             onResetTaskSortMode = viewModel::resetTaskSortMode,
                             onExitHabitJiggle = viewModel::exitHabitJiggleMode,
                             onEnterHabitJiggle = viewModel::enterHabitJiggleMode,
-                            onDeleteHabit = viewModel::deleteTaskItem,
+                            onDeleteHabit = viewModel::deleteHabitItem,
                             onReorderTask = viewModel::reorderTasks,
                             onReorderHabits = viewModel::reorderHabits,
                             onCompleteTask = viewModel::completeTask,
@@ -1222,14 +1222,12 @@ private fun TasksPage(
     var isHabitGestureLocked by remember { mutableStateOf(false) }
     var isTaskSwipeGestureLocked by remember { mutableStateOf(false) }
     var isTaskLongPressGestureLocked by remember { mutableStateOf(false) }
-    val habits = remember(uiState.data.tasks) {
-        uiState.data.tasks.filter { it.kind == KudoTaskKind.Habit }
-    }
+    val habits = uiState.data.habits
     var localHabits by remember { mutableStateOf(habits) }
     val currentSortMode = uiState.data.taskSortMode
     val tasks = remember(uiState.data.tasks, currentSortMode) {
         sortTasksForDisplay(
-            tasks = uiState.data.tasks.filter { it.kind == KudoTaskKind.Task },
+            tasks = uiState.data.tasks,
             sortMode = currentSortMode
         )
     }
@@ -1370,8 +1368,8 @@ private fun TasksPage(
                         onGestureLockChange = { isHabitGestureLocked = it },
                         onHabitsChange = { localHabits = it },
                         onDragFinished = {
-                            if (localHabits.map(KudoTask::id) != habits.map(KudoTask::id)) {
-                                onReorderHabits(localHabits.map(KudoTask::id))
+                            if (localHabits.map(KudoHabit::id) != habits.map(KudoHabit::id)) {
+                                onReorderHabits(localHabits.map(KudoHabit::id))
                             }
                         },
                         onCompleteHabit = onCompleteHabit,

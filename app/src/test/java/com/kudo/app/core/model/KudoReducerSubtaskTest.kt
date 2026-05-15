@@ -10,14 +10,7 @@ class KudoReducerSubtaskTest {
     @Test
     fun updateTask_splitsRewardEqually() {
         val state = KudoState(
-            tasks = listOf(
-                KudoTask(
-                    id = 1L,
-                    title = "Launch",
-                    coins = 12,
-                    kind = KudoTaskKind.Task
-                )
-            )
+            tasks = listOf(KudoTask(id = 1L, title = "Launch", coins = 12))
         )
 
         val updated = KudoReducer.updateTask(
@@ -40,14 +33,7 @@ class KudoReducerSubtaskTest {
     @Test
     fun updateTask_splitsRewardWithRemainder() {
         val state = KudoState(
-            tasks = listOf(
-                KudoTask(
-                    id = 1L,
-                    title = "Launch",
-                    coins = 10,
-                    kind = KudoTaskKind.Task
-                )
-            )
+            tasks = listOf(KudoTask(id = 1L, title = "Launch", coins = 10))
         )
 
         val updated = KudoReducer.updateTask(
@@ -137,9 +123,7 @@ class KudoReducerSubtaskTest {
             title = "Launch v2",
             coins = 99,
             dueAtEpochMillis = 5_000L,
-            subtaskDrafts = listOf(
-                KudoSubtaskDraft("Different")
-            ),
+            subtaskDrafts = listOf(KudoSubtaskDraft("Different")),
             now = 300L
         )
 
@@ -155,14 +139,7 @@ class KudoReducerSubtaskTest {
     private fun seededTaskState(): KudoState {
         val updated = KudoReducer.updateTask(
             state = KudoState(
-                tasks = listOf(
-                    KudoTask(
-                        id = 1L,
-                        title = "Launch",
-                        coins = 12,
-                        kind = KudoTaskKind.Task
-                    )
-                )
+                tasks = listOf(KudoTask(id = 1L, title = "Launch", coins = 12))
             ),
             id = 1L,
             title = "Launch",

@@ -468,8 +468,15 @@ internal fun EditSheet(
 ) {
     val configuration = LocalConfiguration.current
     val context = LocalContext.current
-    val targetTask = uiState.data.tasks.firstOrNull { it.id == target.id }
-    val targetStore = uiState.data.store.firstOrNull { it.id == target.id }
+    val targetTask = if (target.kind == KudoEditKind.Task) {
+        uiState.data.tasks.firstOrNull { it.id == target.id }
+    } else null
+    val targetHabit = if (target.kind == KudoEditKind.Habit) {
+        uiState.data.habits.firstOrNull { it.id == target.id }
+    } else null
+    val targetStore = if (target.kind == KudoEditKind.Store) {
+        uiState.data.store.firstOrNull { it.id == target.id }
+    } else null
     val isTaskEditor = target.kind == KudoEditKind.Task && targetTask != null
     val isSubtaskLocked = targetTask?.isSubtaskStructureLocked == true
     val hasStableSubtaskViewport = isTaskEditor
@@ -480,13 +487,17 @@ internal fun EditSheet(
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
     var title by remember(target.id, false) {
-        mutableStateOf(targetTask?.title ?: targetStore?.title.orEmpty())
+        mutableStateOf(
+            targetTask?.title
+                ?: targetHabit?.title
+                ?: targetStore?.title.orEmpty()
+        )
     }
     var value by remember(target.id, false) {
         mutableStateOf(
             when {
-                false -> ""
                 targetTask != null -> targetTask.coins.toString()
+                targetHabit != null -> targetHabit.coins.toString()
                 targetStore != null -> targetStore.cost.toString()
                 else -> ""
             }
