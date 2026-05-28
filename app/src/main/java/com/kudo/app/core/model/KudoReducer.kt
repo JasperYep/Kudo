@@ -134,7 +134,7 @@ object KudoReducer {
             subtaskId = subtask.id,
             subject = KudoLogSubject.Task.fromTask(task)
         )
-        val updatedTasks = if (updatedTask.remainingCoins == 0) {
+        val updatedTasks = if (updatedTask.subtasks.all(KudoSubtask::isCompleted)) {
             grown.tasks.filterNot { it.id == taskId }
         } else {
             grown.tasks.map { current ->

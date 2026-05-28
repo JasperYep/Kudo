@@ -73,6 +73,43 @@ class KudoReducerSubtaskTest {
     }
 
     @Test
+    fun completeSubtask_withZeroValueKeepsTaskUntilAllSubtasksAreDone() {
+        val initial = KudoReducer.updateTask(
+            state = KudoState(
+                tasks = listOf(KudoTask(id = 1L, title = "Launch", coins = 0))
+            ),
+            id = 1L,
+            title = "Launch",
+            coins = 0,
+            dueAtEpochMillis = null,
+            subtaskDrafts = listOf(
+                KudoSubtaskDraft("Plan"),
+                KudoSubtaskDraft("Build")
+            ),
+            now = 100L
+        )
+
+        val firstPass = KudoReducer.completeSubtask(
+            state = initial,
+            taskId = 1L,
+            subtaskId = initial.tasks.first().subtasks.first().id,
+            now = 200L
+        )
+
+        assertEquals(1, firstPass.tasks.size)
+        assertEquals(1, firstPass.tasks.first().completedSubtaskCount)
+
+        val finished = KudoReducer.completeSubtask(
+            state = firstPass,
+            taskId = 1L,
+            subtaskId = firstPass.tasks.first().subtasks.last().id,
+            now = 300L
+        )
+
+        assertTrue(finished.tasks.isEmpty())
+    }
+
+    @Test
     fun completeTask_withStartedSubtasksOnlyPaysRemainder() {
         val initial = seededTaskState()
         val firstPass = KudoReducer.completeSubtask(
