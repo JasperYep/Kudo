@@ -34,27 +34,13 @@ data class KudoTask(
     val count: Int = 0,
     val last: Long = 0L,
     val order: Long = id,
-    val dueAtEpochMillis: Long? = null,
-    val subtasks: List<KudoSubtask> = emptyList()
+    val dueAtEpochMillis: Long? = null
 ) {
     val isHabit: Boolean
         get() = type == KudoState.TYPE_HABIT
 
-    val hasSubtasks: Boolean
-        get() = subtasks.isNotEmpty()
-
-    val completedSubtaskCount: Int
-        get() = subtasks.count(KudoSubtask::isCompleted)
-
     val remainingValue: Int
-        get() = if (subtasks.isEmpty()) {
-            valAmount
-        } else {
-            subtasks.filterNot(KudoSubtask::isCompleted).sumOf(KudoSubtask::valAmount)
-        }
-
-    val isSubtaskStructureLocked: Boolean
-        get() = subtasks.any(KudoSubtask::isCompleted)
+        get() = valAmount
 }
 
 @Immutable
@@ -73,7 +59,6 @@ data class KudoLogEntry(
     val baseValue: Int? = null,
     val type: String,
     val taskId: Long? = null,
-    val subtaskId: Long? = null,
     val isHabit: Boolean = false,
     val itemData: KudoLogItemData? = null
 )
@@ -88,8 +73,7 @@ data class KudoLogItemData(
     val count: Int = 0,
     val last: Long = 0L,
     val order: Long = id,
-    val dueAtEpochMillis: Long? = null,
-    val subtasks: List<KudoSubtask> = emptyList()
+    val dueAtEpochMillis: Long? = null
 ) {
     fun toTask(): KudoTask = KudoTask(
         id = id,
@@ -99,8 +83,7 @@ data class KudoLogItemData(
         count = count,
         last = last,
         order = order,
-        dueAtEpochMillis = dueAtEpochMillis,
-        subtasks = subtasks
+        dueAtEpochMillis = dueAtEpochMillis
     )
 
     fun toStoreItem(): KudoStoreItem = KudoStoreItem(
@@ -119,8 +102,7 @@ data class KudoLogItemData(
             count = task.count,
             last = task.last,
             order = task.order,
-            dueAtEpochMillis = task.dueAtEpochMillis,
-            subtasks = task.subtasks
+            dueAtEpochMillis = task.dueAtEpochMillis
         )
 
         fun fromStoreItem(item: KudoStoreItem): KudoLogItemData = KudoLogItemData(
@@ -132,21 +114,6 @@ data class KudoLogItemData(
     }
 }
 
-@Immutable
-data class KudoSubtask(
-    val id: Long,
-    val title: String,
-    val valAmount: Int = 0,
-    val completedAt: Long? = null
-) {
-    val isCompleted: Boolean
-        get() = completedAt != null
-}
-
-@Immutable
-data class KudoSubtaskDraft(
-    val title: String
-)
 
 @Immutable
 data class KudoNote(

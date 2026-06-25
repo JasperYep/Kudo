@@ -171,8 +171,6 @@ import com.kudo.app.core.platform.KudoHaptics
 import com.kudo.app.core.model.KudoLogEntry
 import com.kudo.app.core.model.KudoState
 import com.kudo.app.core.model.KudoStoreItem
-import com.kudo.app.core.model.KudoSubtask
-import com.kudo.app.core.model.KudoSubtaskDraft
 import com.kudo.app.core.model.KudoTask
 import com.kudo.app.core.repository.KudoStateRepository
 import com.kudo.app.ui.theme.DarkBackground
@@ -381,7 +379,6 @@ fun HomeScreen(
                             onReorderTask = viewModel::reorderTasks,
                             onReorderHabits = viewModel::reorderHabits,
                             onCompleteTask = viewModel::completeTask,
-                            onCompleteSubtask = viewModel::completeSubtask,
                             onEditTask = viewModel::openEditTask,
                             onCompleteHabit = viewModel::completeHabit,
                             listState = tasksListState
@@ -1317,7 +1314,6 @@ private fun TasksPage(
     onReorderTask: (List<Long>) -> Unit,
     onReorderHabits: (List<Long>) -> Unit,
     onCompleteTask: (Long) -> Unit,
-    onCompleteSubtask: (Long, Long) -> Unit,
     onEditTask: (Long) -> Unit,
     onCompleteHabit: (Long) -> Unit,
     listState: LazyListState
@@ -1341,12 +1337,6 @@ private fun TasksPage(
     var localTasks by remember { mutableStateOf(tasks) }
     var lastTaskSwapHapticAtMs by remember { mutableStateOf(0L) }
     val newTopTaskId = localTasks.lastOrNull()?.id?.takeIf { it == uiState.recentTaskInsertId }
-    var expandedTaskIds by rememberSaveable { mutableStateOf(emptyList<Long>()) }
-    LaunchedEffect(tasks.map(KudoTask::id)) {
-        expandedTaskIds = expandedTaskIds.filter { expandedId ->
-            tasks.any { it.id == expandedId && it.hasSubtasks }
-        }
-    }
 
     val localTaskIds = remember(localTasks) { localTasks.map(KudoTask::id).toSet() }
     val taskOrderIds = remember(tasks) { tasks.map(KudoTask::id) }
@@ -1531,7 +1521,6 @@ private fun TasksPage(
                             finalMultiplier = uiState.data.multiplier,
                             isActive = isActive,
                             isDragging = isDragging,
-                            expanded = task.id in expandedTaskIds,
                             modifier = Modifier
                                 .padding(horizontal = 16.dp, vertical = 2.dp)
                                 .lockParentGestureOnLongPress {
@@ -1542,18 +1531,11 @@ private fun TasksPage(
                                     haptics = haptics
                                 )
                                 .detectReorderAfterLongPress(state),
-                            swipeEnabled = isActive && !isDragging && !isTaskLongPressGestureLocked,
+                            swipeEnabled = !isDragging && !isTaskLongPressGestureLocked,
                             onGestureLockChange = { isTaskSwipeGestureLocked = it },
                             onComplete = {
                                 onExitHabitJiggle()
                                 onCompleteTask(task.id)
-                            },
-                            onCompleteSubtask = { subtaskId ->
-                                onExitHabitJiggle()
-                                onCompleteSubtask(task.id, subtaskId)
-                            },
-                            onToggleExpanded = {
-                                expandedTaskIds = toggleId(expandedTaskIds, task.id)
                             },
                             onEdit = {
                                 onExitHabitJiggle()
@@ -2061,14 +2043,6 @@ private fun maybeTriggerReorderSwapHaptic(
     return nowMs
 }
 
-private fun toggleId(ids: List<Long>, targetId: Long): List<Long> {
-    return if (targetId in ids) {
-        ids - targetId
-    } else {
-        ids + targetId
-    }
-}
-
 @Composable
 private fun AnimatedInsertedItem(
     animate: Boolean,
@@ -2565,14 +2539,11 @@ private fun TaskRow(
     finalMultiplier: Float,
     isActive: Boolean = false,
     isDragging: Boolean = false,
-    expanded: Boolean = false,
     modifier: Modifier = Modifier,
     reorderModifier: Modifier = Modifier,
     swipeEnabled: Boolean = true,
     onGestureLockChange: (Boolean) -> Unit = {},
     onComplete: () -> Unit,
-    onCompleteSubtask: (Long) -> Unit,
-    onToggleExpanded: () -> Unit,
     onEdit: () -> Unit
 ) {
     val haptics = rememberKudoHaptics()
@@ -2580,17 +2551,6 @@ private fun TaskRow(
     val dueBadge = remember(task.dueAtEpochMillis, palette) {
         task.dueAtEpochMillis?.let { dueBadgeFor(it, palette) }
     }
-    val subtaskProgress = remember(task.subtasks) {
-        if (task.hasSubtasks) {
-            "${task.completedSubtaskCount}/${task.subtasks.size}"
-        } else {
-            null
-        }
-    }
-    val chevronRotation by animateFloatAsState(
-        targetValue = if (expanded) 180f else 0f,
-        label = "subtaskChevronRotation"
-    )
     val activeBorderColor = if (isActive) palette.green.copy(alpha = 0.5f) else palette.line
     SwipeActionCard(
         modifier = modifier,
@@ -2619,182 +2579,45 @@ private fun TaskRow(
         swipeEnabled = swipeEnabled,
         onGestureLockChange = onGestureLockChange
     ) {
-        Column(
+        Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .border(1.dp, activeBorderColor, RoundedCornerShape(14.dp))
                 .then(if (isActive) Modifier.background(palette.greenBg.copy(alpha = 0.18f), RoundedCornerShape(14.dp)) else Modifier)
                 .padding(horizontal = 16.dp, vertical = 14.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column(modifier = Modifier.weight(1f)) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = task.title,
+                    color = palette.textMain,
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.Medium,
+                    maxLines = 1
+                )
+                dueBadge?.let { badge ->
+                    Spacer(modifier = Modifier.height(3.dp))
                     Text(
-                        text = task.title,
-                        color = palette.textMain,
-                        fontSize = 15.sp,
+                        text = badge.text,
+                        color = badge.color,
+                        fontSize = 11.sp,
                         fontWeight = FontWeight.Medium,
                         maxLines = 1
                     )
-                    dueBadge?.let { badge ->
-                        Spacer(modifier = Modifier.height(3.dp))
-                        Text(
-                            text = badge.text,
-                            color = badge.color,
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Medium,
-                            maxLines = 1
-                        )
-                    }
-                }
-                Spacer(modifier = Modifier.width(14.dp))
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    subtaskProgress?.let { progress ->
-                        Row(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(999.dp))
-                                .background(palette.background)
-                                .border(1.dp, palette.line, RoundedCornerShape(999.dp))
-                                .clickable(
-                                    interactionSource = remember { MutableInteractionSource() },
-                                    indication = null,
-                                    onClick = onToggleExpanded
-                                )
-                                .padding(horizontal = 8.dp, vertical = 6.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(4.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Rounded.CheckCircle,
-                                contentDescription = null,
-                                tint = palette.textSub,
-                                modifier = Modifier.size(14.dp)
-                            )
-                            Text(
-                                text = progress,
-                                color = palette.textSub,
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold
-                            )
-                            Icon(
-                                imageVector = Icons.Rounded.KeyboardArrowDown,
-                                contentDescription = if (expanded) {
-                                    "Collapse subtasks"
-                                } else {
-                                    "Expand subtasks"
-                                },
-                                tint = palette.textSub,
-                                modifier = Modifier
-                                    .size(14.dp)
-                                    .graphicsLayer { rotationZ = chevronRotation }
-                            )
-                        }
-                    }
-                    Text(
-                        text = "+${'$'}" + reward,
-                        color = palette.green,
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(palette.greenBg)
-                            .padding(horizontal = 10.dp, vertical = 6.dp)
-                    )
                 }
             }
-            AnimatedVisibility(
-                visible = expanded && task.hasSubtasks,
-                enter = fadeIn() + expandVertically(),
-                exit = fadeOut()
-            ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 12.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Divider(color = palette.line)
-                    task.subtasks.forEach { subtask ->
-                        SubtaskRow(
-                            subtask = subtask,
-                            palette = palette,
-                            finalMultiplier = finalMultiplier,
-                            onComplete = {
-                                if (!subtask.isCompleted) {
-                                    haptics.vibrate(HapticTickMs)
-                                    onCompleteSubtask(subtask.id)
-                                }
-                            }
-                        )
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun SubtaskRow(
-    subtask: KudoSubtask,
-    palette: KudoPalette,
-    finalMultiplier: Float,
-    onComplete: () -> Unit
-) {
-    val reward = (subtask.valAmount * finalMultiplier).toInt()
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
-            .background(palette.background)
-            .clickable(
-                enabled = !subtask.isCompleted,
-                interactionSource = remember { MutableInteractionSource() },
-                indication = null,
-                onClick = onComplete
+            Spacer(modifier = Modifier.width(14.dp))
+            Text(
+                text = "+${'$'}" + reward,
+                color = palette.green,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(palette.greenBg)
+                    .padding(horizontal = 10.dp, vertical = 6.dp)
             )
-            .padding(horizontal = 12.dp, vertical = 11.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Box(
-            modifier = Modifier
-                .size(18.dp)
-                .clip(CircleShape)
-                .border(
-                    width = 1.dp,
-                    color = if (subtask.isCompleted) palette.green else palette.line,
-                    shape = CircleShape
-                )
-                .background(if (subtask.isCompleted) palette.greenBg else Color.Transparent),
-            contentAlignment = Alignment.Center
-        ) {
-            if (subtask.isCompleted) {
-                Icon(
-                    imageVector = Icons.Rounded.Check,
-                    contentDescription = null,
-                    tint = palette.green,
-                    modifier = Modifier.size(12.dp)
-                )
-            }
         }
-        Spacer(modifier = Modifier.width(10.dp))
-        Text(
-            text = subtask.title,
-            color = if (subtask.isCompleted) palette.textSub else palette.textMain,
-            fontSize = 13.sp,
-            fontWeight = FontWeight.Medium,
-            textDecoration = if (subtask.isCompleted) TextDecoration.LineThrough else null,
-            modifier = Modifier.weight(1f)
-        )
-        Text(
-            text = "+${'$'}" + reward,
-            color = if (subtask.isCompleted) palette.textSub else palette.green,
-            fontSize = 12.sp,
-            fontWeight = FontWeight.Bold
-        )
     }
 }
 

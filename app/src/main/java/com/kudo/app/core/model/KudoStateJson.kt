@@ -58,9 +58,6 @@ object KudoStateJson {
                     .put("order", task.order)
                     .apply {
                         task.dueAtEpochMillis?.let { put("dueAt", it) }
-                        if (task.subtasks.isNotEmpty()) {
-                            put("subs", task.subtasks.toJsonArray())
-                        }
                     }
             )
         }
@@ -88,7 +85,6 @@ object KudoStateJson {
 
             log.baseValue?.let { json.put("base", it) }
             log.taskId?.let { json.put("taskId", it) }
-            log.subtaskId?.let { json.put("subtaskId", it) }
             if (log.isHabit) json.put("isHabit", true)
             log.itemData?.let { item ->
                 json.put(
@@ -104,9 +100,6 @@ object KudoStateJson {
                             put("last", item.last)
                             put("order", item.order)
                             item.dueAtEpochMillis?.let { put("dueAt", it) }
-                            if (item.subtasks.isNotEmpty()) {
-                                put("subs", item.subtasks.toJsonArray())
-                            }
                         }
                 )
             }
@@ -135,9 +128,6 @@ object KudoStateJson {
 
     fun sanitize(state: KudoState): KudoState {
         return state.copy(
-            tasks = state.tasks.map { task ->
-                task.copy(subtasks = if (task.type == KudoState.TYPE_HABIT) emptyList() else task.subtasks)
-            },
             taskSortMode = sanitizeTaskSortMode(state.taskSortMode)
         )
     }
@@ -176,8 +166,7 @@ object KudoStateJson {
                         count = json.optInt("count", 0),
                         last = json.optLong("last", 0L),
                         order = json.optLong("order", id),
-                        dueAtEpochMillis = if (json.has("dueAt")) json.optLong("dueAt") else null,
-                        subtasks = json.optJSONArray("subs").toSubtaskList()
+                        dueAtEpochMillis = if (json.has("dueAt")) json.optLong("dueAt") else null
                     ) to list
                 )
             }
@@ -215,7 +204,6 @@ object KudoStateJson {
                         baseValue = if (json.has("base")) json.optInt("base", 0) else null,
                         type = json.optString("type", ""),
                         taskId = if (json.has("taskId")) json.optLong("taskId") else null,
-                        subtaskId = if (json.has("subtaskId")) json.optLong("subtaskId") else null,
                         isHabit = json.optBoolean("isHabit", false),
                         itemData = itemJson?.let {
                             val id = it.optLong("id", 0L)
@@ -228,8 +216,7 @@ object KudoStateJson {
                                 count = it.optInt("count", 0),
                                 last = it.optLong("last", 0L),
                                 order = it.optLong("order", id),
-                                dueAtEpochMillis = if (it.has("dueAt")) it.optLong("dueAt") else null,
-                                subtasks = it.optJSONArray("subs").toSubtaskList()
+                                dueAtEpochMillis = if (it.has("dueAt")) it.optLong("dueAt") else null
                             )
                         }
                     )
@@ -251,40 +238,6 @@ object KudoStateJson {
                         content = json.optString("content", ""),
                         updatedAt = json.optLong("updatedAt", id)
                     )
-                )
-            }
-        }
-    }
-
-    private fun JSONArray?.toSubtaskList(): List<KudoSubtask> {
-        if (this == null) return emptyList()
-        return buildList(length()) {
-            for (index in 0 until length()) {
-                val json = optJSONObject(index) ?: continue
-                val id = json.optLong("id", System.currentTimeMillis() + index)
-                add(
-                    KudoSubtask(
-                        id = id,
-                        title = json.optString("title", ""),
-                        valAmount = json.optInt("val", 0),
-                        completedAt = if (json.has("completedAt")) json.optLong("completedAt") else null
-                    )
-                )
-            }
-        }
-    }
-
-    private fun List<KudoSubtask>.toJsonArray(): JSONArray {
-        return JSONArray().apply {
-            this@toJsonArray.forEach { subtask ->
-                put(
-                    JSONObject()
-                        .put("id", subtask.id)
-                        .put("title", subtask.title)
-                        .put("val", subtask.valAmount)
-                        .apply {
-                            subtask.completedAt?.let { put("completedAt", it) }
-                        }
                 )
             }
         }

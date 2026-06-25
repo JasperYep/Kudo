@@ -30,7 +30,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
@@ -66,18 +65,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
-import com.kudo.app.core.model.KudoSubtask
-import com.kudo.app.core.model.KudoSubtaskDraft
 import com.kudo.app.core.repository.KudoStateRepository
 import com.kudo.app.ui.viewmodel.EditingTarget
 import com.kudo.app.ui.viewmodel.KudoUiState
@@ -463,19 +458,13 @@ internal fun EditSheet(
     palette: KudoPalette,
     target: EditingTarget,
     onDismiss: () -> Unit,
-    onSave: (String, String, Long?, List<KudoSubtaskDraft>?) -> Unit,
+    onSave: (String, String, Long?) -> Unit,
     onDelete: () -> Unit
 ) {
-    val configuration = LocalConfiguration.current
     val context = LocalContext.current
     val targetTask = uiState.data.tasks.firstOrNull { it.id == target.id }
     val targetStore = uiState.data.store.firstOrNull { it.id == target.id }
     val isTaskEditor = target.kind == KudoViewModel.KIND_TASK && targetTask != null
-    val isSubtaskLocked = targetTask?.isSubtaskStructureLocked == true
-    val hasStableSubtaskViewport = isTaskEditor
-    val stableSheetViewportHeight = remember(configuration.screenHeightDp) {
-        (configuration.screenHeightDp.dp * 0.72f).coerceAtMost(560.dp)
-    }
     val scrollState = rememberScrollState()
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
@@ -485,7 +474,6 @@ internal fun EditSheet(
     var value by remember(target.id, false) {
         mutableStateOf(
             when {
-                false -> ""
                 targetTask != null -> targetTask.valAmount.toString()
                 targetStore != null -> targetStore.cost.toString()
                 else -> ""
@@ -504,16 +492,6 @@ internal fun EditSheet(
     var customDueTime by remember(target.id, false, targetTask?.dueAtEpochMillis) {
         mutableStateOf(initialDueDateTime?.toLocalTime() ?: DefaultDueTime)
     }
-    var subtaskDrafts by remember(target.id, false, targetTask?.subtasks) {
-        mutableStateOf(
-            targetTask?.subtasks?.map { subtask ->
-                KudoSubtaskDraft(title = subtask.title)
-            } ?: emptyList()
-        )
-    }
-    var newSubtaskTitle by remember(target.id, false) {
-        mutableStateOf("")
-    }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -523,13 +501,6 @@ internal fun EditSheet(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .then(
-                    if (hasStableSubtaskViewport) {
-                        Modifier.height(stableSheetViewportHeight)
-                    } else {
-                        Modifier
-                    }
-                )
                 .navigationBarsPadding()
                 .imePadding()
                 .verticalScroll(scrollState)
@@ -562,7 +533,6 @@ internal fun EditSheet(
                     TextField(
                         value = value,
                         onValueChange = { value = it.filter(Char::isDigit) },
-                        enabled = !isSubtaskLocked,
                         modifier = Modifier
                             .fillMaxWidth()
                             .defaultMinSize(minHeight = EditFieldMinHeight),
@@ -614,92 +584,6 @@ internal fun EditSheet(
                         }
                     )
                 }
-                Spacer(modifier = Modifier.height(18.dp))
-                CompactEditLabel(text = "Subtasks", palette = palette)
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(18.dp))
-                            .background(palette.background)
-                            .border(1.dp, palette.line, RoundedCornerShape(18.dp))
-                            .padding(14.dp),
-                        verticalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        if (subtaskDrafts.isEmpty()) {
-                            Text(
-                                text = "Add subtasks only when you want partial rewards.",
-                                color = palette.textSub,
-                                fontSize = 12.sp
-                            )
-                        } else {
-                            subtaskDrafts.forEachIndexed { index, draft ->
-                                val existingSubtask = targetTask?.subtasks?.getOrNull(index)
-                                SubtaskEditorRow(
-                                    title = draft.title,
-                                    completed = existingSubtask?.isCompleted == true,
-                                    palette = palette,
-                                    locked = isSubtaskLocked,
-                                    onRemove = {
-                                        if (!isSubtaskLocked) {
-                                            subtaskDrafts = subtaskDrafts.filterIndexed { itemIndex, _ ->
-                                                itemIndex != index
-                                            }
-                                        }
-                                    }
-                                )
-                            }
-                        }
-                        if (!isSubtaskLocked) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                TextField(
-                                    value = newSubtaskTitle,
-                                    onValueChange = { newSubtaskTitle = it },
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .defaultMinSize(minHeight = EditFieldMinHeight),
-                                    placeholder = { Text("Add subtask", color = palette.textSub) },
-                                    colors = textFieldColors(palette),
-                                    shape = EditControlShape,
-                                    singleLine = true
-                                )
-                                TextButton(
-                                    onClick = {
-                                        val trimmed = newSubtaskTitle.trim()
-                                        if (trimmed.isNotBlank()) {
-                                            subtaskDrafts = subtaskDrafts + KudoSubtaskDraft(title = trimmed)
-                                            newSubtaskTitle = ""
-                                        }
-                                    },
-                                    modifier = Modifier
-                                        .defaultMinSize(minHeight = EditFieldMinHeight)
-                                        .clip(EditControlShape)
-                                        .background(palette.card)
-                                        .border(1.dp, palette.line, EditControlShape)
-                                ) {
-                                    Text(
-                                        "Add",
-                                        color = palette.textMain,
-                                        fontWeight = FontWeight.SemiBold
-                                    )
-                                }
-                            }
-                            Text(
-                                text = "Reward is split equally across subtasks.",
-                                color = palette.textSub,
-                                fontSize = 11.sp
-                            )
-                        } else {
-                            Text(
-                                text = "Reward split locks after the first subtask is checked.",
-                                color = palette.textSub,
-                                fontSize = 11.sp
-                            )
-                        }
-                    }
             } else {
                 CompactEditLabel(text = "Value", palette = palette)
                 TextField(
@@ -751,8 +635,7 @@ internal fun EditSheet(
                                     date = it,
                                     customTime = customDueTime.takeIf { hasCustomDueTime }
                                 )
-                            },
-                            subtaskDrafts.takeIf { isTaskEditor }
+                            }
                         )
                     },
                     modifier = Modifier
@@ -769,58 +652,6 @@ internal fun EditSheet(
                 }
             }
             Spacer(modifier = Modifier.height(28.dp))
-        }
-    }
-}
-
-@Composable
-private fun SubtaskEditorRow(
-    title: String,
-    completed: Boolean,
-    palette: KudoPalette,
-    locked: Boolean,
-    onRemove: () -> Unit
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(EditControlShape)
-            .background(palette.card)
-            .border(1.dp, palette.line, EditControlShape)
-            .padding(horizontal = 14.dp, vertical = 12.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Text(
-            text = title,
-            color = if (completed) palette.textSub else palette.textMain,
-            fontSize = 13.sp,
-            fontWeight = FontWeight.Medium,
-            textDecoration = if (completed) TextDecoration.LineThrough else null,
-            maxLines = 1,
-            modifier = Modifier.weight(1f)
-        )
-        if (!locked) {
-            Spacer(modifier = Modifier.width(8.dp))
-            Box(
-                modifier = Modifier
-                    .size(EditChipSize)
-                    .clip(CircleShape)
-                    .background(palette.background)
-                    .border(1.dp, palette.line, CircleShape)
-                    .clickable(
-                        interactionSource = remember { MutableInteractionSource() },
-                        indication = null,
-                        onClick = onRemove
-                    ),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = Icons.Rounded.DeleteOutline,
-                    contentDescription = "Remove subtask",
-                    tint = palette.orange,
-                    modifier = Modifier.size(16.dp)
-                )
-            }
         }
     }
 }

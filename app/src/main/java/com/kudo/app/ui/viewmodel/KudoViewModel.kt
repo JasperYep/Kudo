@@ -8,7 +8,6 @@ import androidx.lifecycle.viewModelScope
 import com.kudo.app.KudoApplication
 import com.kudo.app.core.model.KudoReducer
 import com.kudo.app.core.model.KudoState
-import com.kudo.app.core.model.KudoSubtaskDraft
 import com.kudo.app.core.model.KudoTaskTextImport
 import com.kudo.app.core.repository.KudoStateRepository
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -198,10 +197,6 @@ class KudoViewModel(application: Application) : AndroidViewModel(application) {
         triggerUndoBanner()
     }
 
-    fun completeSubtask(taskId: Long, subtaskId: Long) {
-        launchStateUpdate { state -> KudoReducer.completeSubtask(state, taskId, subtaskId) }
-    }
-
     fun purchaseItemFromGesture(id: Long): Boolean {
         val current = uiState.value.data
         val item = current.store.firstOrNull { it.id == id } ?: return false
@@ -234,16 +229,11 @@ class KudoViewModel(application: Application) : AndroidViewModel(application) {
     fun saveEditing(
         title: String,
         valueInput: String,
-        dueAtEpochMillis: Long?,
-        subtaskDrafts: List<KudoSubtaskDraft>?
+        dueAtEpochMillis: Long?
     ) {
         val target = viewState.value.editingTarget ?: return
         val sanitizedTitle = title.trim()
         val parsedValue = parseEditValue(valueInput)
-        val sanitizedSubtasks = subtaskDrafts?.mapNotNull { draft ->
-            draft.title.trim().ifBlank { null }?.let { KudoSubtaskDraft(title = it) }
-        }
-        val editTimestamp = System.currentTimeMillis()
 
         launchAsync {
             repository.updateState { state ->
@@ -253,9 +243,7 @@ class KudoViewModel(application: Application) : AndroidViewModel(application) {
                         id = target.id,
                         title = sanitizedTitle,
                         value = parsedValue,
-                        dueAtEpochMillis = dueAtEpochMillis,
-                        subtaskDrafts = sanitizedSubtasks,
-                        now = editTimestamp
+                        dueAtEpochMillis = dueAtEpochMillis
                     )
 
                     KIND_STORE -> KudoReducer.updateStoreItem(
@@ -382,7 +370,7 @@ class KudoViewModel(application: Application) : AndroidViewModel(application) {
 
     private fun parseDashboardValue(raw: String): Int {
         if (raw.isBlank()) {
-            return 0
+            return 1
         }
         return parseEditValue(raw)
     }

@@ -114,53 +114,6 @@ object KudoReducer {
         )
     }
 
-    fun completeSubtask(
-        state: KudoState,
-        taskId: Long,
-        subtaskId: Long,
-        now: Long = System.currentTimeMillis()
-    ): KudoState {
-        val task = state.tasks.firstOrNull { it.id == taskId } ?: return state
-        val subtask = task.subtasks.firstOrNull { it.id == subtaskId && !it.isCompleted } ?: return state
-        val reward = floor(subtask.valAmount * state.multiplier).toInt()
-        val rewarded = state.copy(coins = state.coins + reward)
-        val grown = processGrowth(rewarded, subtask.valAmount)
-        val updatedTask = task.copy(
-            subtasks = task.subtasks.map { current ->
-                if (current.id == subtaskId) {
-                    current.copy(completedAt = now)
-                } else {
-                    current
-                }
-            }
-        )
-        val log = KudoLogEntry(
-            timestamp = now,
-            text = "${task.title}: ${subtask.title}",
-            value = reward,
-            baseValue = subtask.valAmount,
-            type = "task",
-            taskId = task.id,
-            subtaskId = subtask.id,
-            itemData = KudoLogItemData.fromTask(task)
-        )
-        val updatedTasks = if (updatedTask.remainingValue == 0) {
-            grown.tasks.filterNot { it.id == taskId }
-        } else {
-            grown.tasks.map { current ->
-                if (current.id == taskId) {
-                    updatedTask
-                } else {
-                    current
-                }
-            }
-        }
-        return grown.copy(
-            tasks = updatedTasks,
-            logs = listOf(log) + grown.logs
-        )
-    }
-
     fun completeHabit(state: KudoState, id: Long, now: Long = System.currentTimeMillis()): KudoState {
         val habit = state.tasks.firstOrNull { it.id == id } ?: return state
         val reward = floor(habit.valAmount * state.multiplier).toInt()
@@ -225,9 +178,7 @@ object KudoReducer {
                 "task" -> {
                     val exists = nextState.tasks.firstOrNull { it.id == itemData.id }
                     val snapshot = itemData.toTask()
-                    nextState = if (log.subtaskId != null && itemData.type == KudoState.TYPE_TASK) {
-                        nextState.copy(tasks = restoreTaskSnapshot(nextState.tasks, snapshot))
-                    } else if (exists == null && itemData.type == KudoState.TYPE_TASK) {
+                    nextState = if (exists == null && itemData.type == KudoState.TYPE_TASK) {
                         nextState.copy(tasks = nextState.tasks + snapshot)
                     } else if (exists != null && log.isHabit) {
                         nextState.copy(
@@ -261,30 +212,15 @@ object KudoReducer {
         id: Long,
         title: String,
         value: Int,
-        dueAtEpochMillis: Long?,
-        subtaskDrafts: List<KudoSubtaskDraft>? = null,
-        now: Long = System.currentTimeMillis()
+        dueAtEpochMillis: Long?
     ): KudoState {
         return state.copy(
             tasks = state.tasks.map { task ->
                 if (task.id == id) {
-                    val isLocked = task.isSubtaskStructureLocked
-                    val resolvedSubtasks = if (task.type == KudoState.TYPE_TASK && subtaskDrafts == null) {
-                        task.subtasks
-                    } else if (task.type == KudoState.TYPE_TASK && !isLocked) {
-                        createSubtasks(
-                            drafts = subtaskDrafts.orEmpty(),
-                            totalValue = value,
-                            now = now
-                        )
-                    } else {
-                        task.subtasks
-                    }
                     task.copy(
                         title = title.ifBlank { task.title },
-                        valAmount = if (isLocked) task.valAmount else value,
-                        dueAtEpochMillis = dueAtEpochMillis,
-                        subtasks = resolvedSubtasks
+                        valAmount = value,
+                        dueAtEpochMillis = dueAtEpochMillis
                     )
                 } else {
                     task
@@ -416,17 +352,6 @@ object KudoReducer {
         )
     }
 
-    private fun restoreTaskSnapshot(tasks: List<KudoTask>, snapshot: KudoTask): List<KudoTask> {
-        val exists = tasks.any { it.id == snapshot.id }
-        return if (exists) {
-            tasks.map { task ->
-                if (task.id == snapshot.id) snapshot else task
-            }
-        } else {
-            tasks + snapshot
-        }
-    }
-
     fun addNote(
         state: KudoState,
         now: Long = System.currentTimeMillis()
@@ -467,26 +392,4 @@ object KudoReducer {
         return state.copy(notes = state.notes.filterNot { it.id == id })
     }
 
-    private fun createSubtasks(
-        drafts: List<KudoSubtaskDraft>,
-        totalValue: Int,
-        now: Long
-    ): List<KudoSubtask> {
-        val titles = drafts.mapNotNull { draft ->
-            draft.title.trim().ifBlank { null }
-        }
-        if (titles.isEmpty()) return emptyList()
-
-        val count = titles.size
-        val base = totalValue / count
-        val remainder = totalValue % count
-
-        return titles.mapIndexed { index, title ->
-            KudoSubtask(
-                id = now + index + 1L,
-                title = title,
-                valAmount = base + if (index < remainder) 1 else 0
-            )
-        }
     }
-}
