@@ -3,7 +3,6 @@ package com.kudo.app.ui.screens
 import android.Manifest
 import android.app.AlarmManager
 import android.app.DatePickerDialog
-import android.app.TimePickerDialog
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
@@ -79,8 +78,6 @@ import com.kudo.app.ui.viewmodel.KudoUiState
 import com.kudo.app.ui.viewmodel.KudoViewModel
 import java.time.Instant
 import java.time.LocalDate
-import java.time.LocalDateTime
-import java.time.LocalTime
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 
@@ -480,17 +477,12 @@ internal fun EditSheet(
             }
         )
     }
-    val initialDueDateTime = remember(target.id, false, targetTask?.dueAtEpochMillis) {
-        targetTask?.dueAtEpochMillis?.let { Instant.ofEpochMilli(it).atZone(AppZoneId).toLocalDateTime() }
-    }
     var dueDate by remember(target.id, false, targetTask?.dueAtEpochMillis) {
-        mutableStateOf(initialDueDateTime?.toLocalDate())
-    }
-    var hasCustomDueTime by remember(target.id, false, targetTask?.dueAtEpochMillis) {
-        mutableStateOf(initialDueDateTime?.toLocalTime() != null && initialDueDateTime.toLocalTime() != DefaultDueTime)
-    }
-    var customDueTime by remember(target.id, false, targetTask?.dueAtEpochMillis) {
-        mutableStateOf(initialDueDateTime?.toLocalTime() ?: DefaultDueTime)
+        mutableStateOf(
+            targetTask?.dueAtEpochMillis?.let {
+                Instant.ofEpochMilli(it).atZone(AppZoneId).toLocalDate()
+            }
+        )
     }
 
     ModalBottomSheet(
@@ -548,11 +540,9 @@ internal fun EditSheet(
                         singleLine = true
                     )
 
-                    DeadlinePanel(
+                    SimpleDueDateSelector(
                         palette = palette,
                         dueDate = dueDate,
-                        hasCustomDueTime = hasCustomDueTime,
-                        customDueTime = customDueTime,
                         onPickDate = {
                             val initialDate = dueDate ?: LocalDate.now(AppZoneId)
                             DatePickerDialog(
@@ -565,23 +555,7 @@ internal fun EditSheet(
                                 initialDate.dayOfMonth
                             ).show()
                         },
-                        onClearDate = { dueDate = null },
-                        onPickCustomTime = {
-                            TimePickerDialog(
-                                context,
-                                { _, hourOfDay, minute ->
-                                    hasCustomDueTime = true
-                                    customDueTime = LocalTime.of(hourOfDay, minute)
-                                },
-                                customDueTime.hour,
-                                customDueTime.minute,
-                                true
-                            ).show()
-                        },
-                        onResetTime = {
-                            hasCustomDueTime = false
-                            customDueTime = DefaultDueTime
-                        }
+                        onClearDate = { dueDate = null }
                     )
                 }
             } else {
@@ -630,12 +604,7 @@ internal fun EditSheet(
                         onSave(
                             title,
                             value,
-                            dueDate?.let {
-                                resolveDueAtEpochMillis(
-                                    date = it,
-                                    customTime = customDueTime.takeIf { hasCustomDueTime }
-                                )
-                            }
+                            dueDate?.let { resolveDueAtEpochMillis(it) }
                         )
                     },
                     modifier = Modifier
@@ -687,96 +656,57 @@ internal fun textFieldColors(palette: KudoPalette) = TextFieldDefaults.colors(
 )
 
 @Composable
-private fun DeadlinePanel(
+private fun SimpleDueDateSelector(
     palette: KudoPalette,
     dueDate: LocalDate?,
-    hasCustomDueTime: Boolean,
-    customDueTime: LocalTime,
     onPickDate: () -> Unit,
-    onClearDate: () -> Unit,
-    onPickCustomTime: () -> Unit,
-    onResetTime: () -> Unit
+    onClearDate: () -> Unit
 ) {
-    val hasDeadline = dueDate != null
-    val dueTime = if (hasCustomDueTime) customDueTime else DefaultDueTime
-    val summary = when {
-        !hasDeadline -> "No deadline"
-        else -> "${dueDate?.format(DeadlineDateFormatter).orEmpty()} at ${dueTime.format(DeadlineTimeFormatter)}"
-    }
-    val detail = when {
-        !hasDeadline -> "Pick a date. If you skip time, the reminder stays at 09:00."
-        hasCustomDueTime -> "Custom time"
-        else -> "Default time"
-    }
+    val haptics = rememberKudoHaptics()
 
     Column(
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        CompactEditLabel(text = "Deadline", palette = palette)
-        Column(
+        CompactEditLabel(text = "Due Date", palette = palette)
+        Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(18.dp))
                 .background(palette.background)
                 .border(1.dp, palette.line, RoundedCornerShape(18.dp))
-                .padding(14.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
+                .clickable {
+                    haptics.vibrate(HapticTickMs)
+                    onPickDate()
+                }
+                .padding(horizontal = 16.dp, vertical = 14.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = summary,
-                        color = palette.textMain,
-                        fontSize = 15.sp,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(
-                        text = detail,
-                        color = palette.textSub,
-                        fontSize = 12.sp
-                    )
-                }
-                if (hasDeadline) {
-                    TextButton(onClick = onClearDate) {
-                        Text(
-                            text = "Clear",
-                            color = palette.orange,
-                            fontWeight = FontWeight.Medium
-                        )
-                    }
-                }
-            }
-
-            DeadlineRowButton(
-                label = "Date",
-                value = dueDate?.format(DeadlineDateFormatter) ?: "Choose",
-                hint = if (hasDeadline) "Tap to change" else "Tap to set",
-                palette = palette,
-                onClick = onPickDate
-            )
-
-            if (hasDeadline) {
-                DeadlineRowButton(
-                    label = "Time",
-                    value = dueTime.format(DeadlineTimeFormatter),
-                    hint = if (hasCustomDueTime) "Tap to change" else "Optional. Defaults to 09:00",
-                    palette = palette,
-                    onClick = onPickCustomTime
+            Column {
+                Text(
+                    text = dueDate?.let { formatDueDate(it) } ?: "No deadline",
+                    color = palette.textMain,
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = if (dueDate != null) "Tap to change" else "Tap to set",
+                    color = palette.textSub,
+                    fontSize = 12.sp
                 )
             }
-
-            if (hasDeadline && hasCustomDueTime) {
+            if (dueDate != null) {
                 TextButton(
-                    onClick = onResetTime,
-                    modifier = Modifier.align(Alignment.End)
+                    onClick = {
+                        haptics.vibrate(HapticTickMs)
+                        onClearDate()
+                    },
+                    modifier = Modifier.padding(end = 0.dp)
                 ) {
                     Text(
-                        text = "Use default 09:00",
-                        color = palette.textSub,
+                        text = "Clear",
+                        color = palette.orange,
                         fontWeight = FontWeight.Medium
                     )
                 }
@@ -785,48 +715,16 @@ private fun DeadlinePanel(
     }
 }
 
-@Composable
-private fun DeadlineRowButton(
-    label: String,
-    value: String,
-    hint: String,
-    palette: KudoPalette,
-    onClick: () -> Unit
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(14.dp))
-            .background(palette.card)
-            .border(1.dp, palette.line, RoundedCornerShape(14.dp))
-            .clickable(onClick = onClick)
-            .padding(horizontal = 14.dp, vertical = 12.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = label,
-                color = palette.textSub,
-                fontSize = 11.sp,
-                fontWeight = FontWeight.Bold,
-                letterSpacing = 0.4.sp
-            )
-            Spacer(modifier = Modifier.height(4.dp))
-            Text(
-                text = value,
-                color = palette.textMain,
-                fontSize = 14.sp,
-                fontWeight = FontWeight.SemiBold
-            )
-        }
-        Spacer(modifier = Modifier.width(12.dp))
-        Text(
-            text = hint,
-            color = palette.textSub,
-            fontSize = 12.sp,
-            textAlign = TextAlign.End
-        )
+private fun formatDueDate(date: LocalDate): String {
+    val today = LocalDate.now(AppZoneId)
+    val tomorrow = today.plusDays(1)
+    val dayAfterTomorrow = today.plusDays(2)
+
+    return when (date) {
+        today -> "Today"
+        tomorrow -> "Tomorrow"
+        dayAfterTomorrow -> "In 2 days"
+        else -> date.format(DateTimeFormatter.ofPattern("EEE, MMM d", Locale.getDefault()))
     }
 }
 
@@ -992,20 +890,9 @@ private fun NotificationPermRow(
     }
 }
 
-private fun resolveDueAtEpochMillis(
-    date: LocalDate,
-    customTime: LocalTime?
-): Long {
-    return LocalDateTime.of(date, customTime ?: DefaultDueTime)
+private fun resolveDueAtEpochMillis(date: LocalDate): Long {
+    return date.atTime(9, 0)
         .atZone(AppZoneId)
         .toInstant()
         .toEpochMilli()
 }
-
-private val DeadlineDateFormatter: DateTimeFormatter =
-    DateTimeFormatter.ofPattern("EEEE, MMM d", Locale.getDefault())
-
-private val DeadlineTimeFormatter: DateTimeFormatter =
-    DateTimeFormatter.ofPattern("H:mm", Locale.getDefault())
-
-private val DefaultDueTime: LocalTime = LocalTime.of(9, 0)
