@@ -78,6 +78,7 @@ import com.kudo.app.ui.viewmodel.KudoUiState
 import com.kudo.app.ui.viewmodel.KudoViewModel
 import java.time.Instant
 import java.time.LocalDate
+import java.time.LocalTime
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 
@@ -484,6 +485,14 @@ internal fun EditSheet(
             }
         )
     }
+    var dueTime by remember(target.id, false, targetTask?.dueAtEpochMillis) {
+        mutableStateOf(
+            targetTask?.dueAtEpochMillis?.let {
+                val time = Instant.ofEpochMilli(it).atZone(AppZoneId).toLocalTime()
+                TimePreset.fromHour(time.hour) ?: TimePreset.Morning
+            } ?: TimePreset.Morning
+        )
+    }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -543,6 +552,7 @@ internal fun EditSheet(
                     SimpleDueDateSelector(
                         palette = palette,
                         dueDate = dueDate,
+                        dueTime = dueTime,
                         onPickDate = {
                             val initialDate = dueDate ?: LocalDate.now(AppZoneId)
                             DatePickerDialog(
@@ -555,6 +565,7 @@ internal fun EditSheet(
                                 initialDate.dayOfMonth
                             ).show()
                         },
+                        onTimeChange = { dueTime = it },
                         onClearDate = { dueDate = null }
                     )
                 }
@@ -604,7 +615,7 @@ internal fun EditSheet(
                         onSave(
                             title,
                             value,
-                            dueDate?.let { resolveDueAtEpochMillis(it) }
+                            dueDate?.let { resolveDueAtEpochMillis(it, dueTime) }
                         )
                     },
                     modifier = Modifier
@@ -659,7 +670,9 @@ internal fun textFieldColors(palette: KudoPalette) = TextFieldDefaults.colors(
 private fun SimpleDueDateSelector(
     palette: KudoPalette,
     dueDate: LocalDate?,
+    dueTime: TimePreset,
     onPickDate: () -> Unit,
+    onTimeChange: (TimePreset) -> Unit,
     onClearDate: () -> Unit
 ) {
     val haptics = rememberKudoHaptics()
@@ -668,6 +681,8 @@ private fun SimpleDueDateSelector(
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         CompactEditLabel(text = "Due Date", palette = palette)
+
+        // Date selector
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -691,7 +706,7 @@ private fun SimpleDueDateSelector(
                 )
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
-                    text = if (dueDate != null) "Tap to change" else "Tap to set",
+                    text = if (dueDate != null) "Tap to change date" else "Tap to set",
                     color = palette.textSub,
                     fontSize = 12.sp
                 )
@@ -712,6 +727,42 @@ private fun SimpleDueDateSelector(
                 }
             }
         }
+
+        // Time presets (only show when date is selected)
+        if (dueDate != null) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                TimePreset.entries.forEach { preset ->
+                    val isSelected = preset == dueTime
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(if (isSelected) palette.textMain else palette.background)
+                            .border(1.dp, palette.line, RoundedCornerShape(12.dp))
+                            .clickable {
+                                if (!isSelected) {
+                                    haptics.vibrate(HapticTickMs)
+                                    onTimeChange(preset)
+                                }
+                            }
+                            .padding(vertical = 10.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = preset.label,
+                            color = if (isSelected) palette.background else palette.textMain,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -725,6 +776,16 @@ private fun formatDueDate(date: LocalDate): String {
         tomorrow -> "Tomorrow"
         dayAfterTomorrow -> "In 2 days"
         else -> date.format(DateTimeFormatter.ofPattern("EEE, MMM d", Locale.getDefault()))
+    }
+}
+
+enum class TimePreset(val label: String, val hour: Int) {
+    Morning("Morning", 9),
+    Afternoon("Afternoon", 14),
+    Evening("Evening", 18);
+
+    companion object {
+        fun fromHour(hour: Int): TimePreset? = entries.find { it.hour == hour }
     }
 }
 
@@ -890,8 +951,8 @@ private fun NotificationPermRow(
     }
 }
 
-private fun resolveDueAtEpochMillis(date: LocalDate): Long {
-    return date.atTime(9, 0)
+private fun resolveDueAtEpochMillis(date: LocalDate, time: TimePreset): Long {
+    return date.atTime(time.hour, 0)
         .atZone(AppZoneId)
         .toInstant()
         .toEpochMilli()
