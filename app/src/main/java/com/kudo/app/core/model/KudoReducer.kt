@@ -352,44 +352,8 @@ object KudoReducer {
         )
     }
 
-    fun addNote(
-        state: KudoState,
-        now: Long = System.currentTimeMillis()
-    ): Pair<KudoState, Long> {
-        val note = KudoNote(
-            id = now,
-            updatedAt = now
-        )
-        return state.copy(notes = listOf(note) + state.notes) to note.id
-    }
 
-    fun updateNoteTitle(
-        state: KudoState,
-        id: Long,
-        title: String,
-        now: Long = System.currentTimeMillis()
-    ): KudoState {
-        val note = state.notes.firstOrNull { it.id == id } ?: return state
-        if (note.title == title) return state
-        val updated = note.copy(title = title, updatedAt = now)
-        return state.copy(notes = listOf(updated) + state.notes.filterNot { it.id == id })
-    }
 
-    fun updateNoteContent(
-        state: KudoState,
-        id: Long,
-        content: String,
-        now: Long = System.currentTimeMillis()
-    ): KudoState {
-        val note = state.notes.firstOrNull { it.id == id } ?: return state
-        if (note.content == content) return state
-        val updated = note.copy(content = content, updatedAt = now)
-        return state.copy(notes = listOf(updated) + state.notes.filterNot { it.id == id })
-    }
 
-    fun deleteNote(state: KudoState, id: Long): KudoState {
-        if (state.notes.none { it.id == id }) return state
-        return state.copy(notes = state.notes.filterNot { it.id == id })
-    }
 
     }

@@ -431,7 +431,7 @@ fun HomeScreen(
                         palette = palette,
                         modifier = Modifier.fillMaxSize(),
                         onUndo = viewModel::undoLog,
-                        onLongPressTrend = viewModel::openNotebook,
+                        onLongPressTrend = { /* no-op */ },
                         listState = logListState
                     )
                 }
@@ -448,19 +448,6 @@ fun HomeScreen(
                 )
             }
         }
-    }
-
-    if (uiState.isNotebookVisible) {
-        NotebookOverlay(
-            uiState = uiState,
-            palette = palette,
-            onCreate = viewModel::addNotebookNote,
-            onDelete = viewModel::deleteNotebookNote,
-            onSelect = viewModel::selectNotebookNote,
-            onTitleChange = viewModel::updateNotebookNoteTitle,
-            onContentChange = viewModel::updateNotebookNoteContent,
-            onClose = viewModel::closeNotebook
-        )
     }
 
     if (uiState.isImportPreviewVisible) {

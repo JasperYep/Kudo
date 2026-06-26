@@ -46,8 +46,6 @@ class KudoViewModel(application: Application) : AndroidViewModel(application) {
         val recentTaskInsertId: Long? = null,
         val recentStoreInsertId: Long? = null,
         val showUndoBanner: Boolean = false,
-        val isNotebookVisible: Boolean = false,
-        val selectedNotebookNoteId: Long? = null,
         val isImportPreviewVisible: Boolean = false,
         val importPreviewDrafts: List<KudoTaskImportDraft> = emptyList()
     )
@@ -72,8 +70,6 @@ class KudoViewModel(application: Application) : AndroidViewModel(application) {
             recentTaskInsertId = view.recentTaskInsertId,
             recentStoreInsertId = view.recentStoreInsertId,
             showUndoBanner = view.showUndoBanner,
-            isNotebookVisible = view.isNotebookVisible,
-            selectedNotebookNoteId = view.selectedNotebookNoteId,
             isImportPreviewVisible = view.isImportPreviewVisible,
             importPreviewDrafts = view.importPreviewDrafts
         )
@@ -380,56 +376,12 @@ class KudoViewModel(application: Application) : AndroidViewModel(application) {
         return parseEditValue(raw)
     }
 
-    fun openNotebook() {
-        val notes = uiState.value.data.notes
-        if (notes.isEmpty()) {
-            val id = System.currentTimeMillis()
-            viewState.update { it.copy(isNotebookVisible = true, selectedNotebookNoteId = id) }
-            launchStateUpdate { state -> KudoReducer.addNote(state, now = id).first }
-            return
-        }
 
-        val currentSelected = viewState.value.selectedNotebookNoteId
-        val selectedId = notes.firstOrNull { it.id == currentSelected }?.id ?: notes.first().id
-        viewState.update { it.copy(isNotebookVisible = true, selectedNotebookNoteId = selectedId) }
-    }
 
-    fun closeNotebook() {
-        viewState.update { it.copy(isNotebookVisible = false) }
-    }
 
-    fun addNotebookNote() {
-        val id = System.currentTimeMillis()
-        viewState.update { it.copy(selectedNotebookNoteId = id, isNotebookVisible = true) }
-        launchStateUpdate { state -> KudoReducer.addNote(state, now = id).first }
-    }
 
-    fun selectNotebookNote(id: Long) {
-        viewState.update { it.copy(selectedNotebookNoteId = id) }
-    }
 
-    fun updateNotebookNoteTitle(id: Long, title: String) {
-        launchStateUpdate { state -> KudoReducer.updateNoteTitle(state, id, title) }
-    }
 
-    fun updateNotebookNoteContent(id: Long, content: String) {
-        launchStateUpdate { state -> KudoReducer.updateNoteContent(state, id, content) }
-    }
-
-    fun deleteNotebookNote(id: Long) {
-        val current = uiState.value
-        val remaining = current.data.notes.filterNot { it.id == id }
-        viewState.update {
-            it.copy(
-                selectedNotebookNoteId = if (it.selectedNotebookNoteId == id) {
-                    remaining.firstOrNull()?.id
-                } else {
-                    it.selectedNotebookNoteId
-                }
-            )
-        }
-        launchStateUpdate { state -> KudoReducer.deleteNote(state, id) }
-    }
 
     fun showImportPreview(text: String) {
         val drafts = KudoTaskTextImport.parse(text)
@@ -540,8 +492,6 @@ data class KudoUiState(
     val recentTaskInsertId: Long? = null,
     val recentStoreInsertId: Long? = null,
     val showUndoBanner: Boolean = false,
-    val isNotebookVisible: Boolean = false,
-    val selectedNotebookNoteId: Long? = null,
     val isImportPreviewVisible: Boolean = false,
     val importPreviewDrafts: List<KudoTaskImportDraft> = emptyList()
 )
