@@ -1,15 +1,18 @@
 package com.kudo.app.core.model
 
 import androidx.compose.runtime.Immutable
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.SerialName
 
+@Serializable
 data class KudoState(
-    val coins: Int = 0,
-    val tasks: List<KudoTask> = emptyList(),
-    val store: List<KudoStoreItem> = emptyList(),
-    val logs: List<KudoLogEntry> = emptyList(),
-    val recentVals: List<Int> = emptyList(),
-    val multiplier: Float = 1.0f,
-    val taskSortMode: Int = TASK_SORT_AUTO_DUE
+    @SerialName("coins") val coins: Int = 0,
+    @SerialName("tasks") val tasks: List<KudoTask> = emptyList(),
+    @SerialName("store") val store: List<KudoStoreItem> = emptyList(),
+    @SerialName("logs") val logs: List<KudoLogEntry> = emptyList(),
+    @SerialName("recentVals") val recentVals: List<Int> = emptyList(),
+    @SerialName("multiplier") val multiplier: Float = 1.0f,
+    @SerialName("taskSortMode") val taskSortMode: Int = TASK_SORT_AUTO_DUE
 ) {
     companion object {
         const val TYPE_TASK = 0
@@ -23,15 +26,17 @@ data class KudoState(
     }
 }
 
+@Serializable
 data class KudoTask(
-    val id: Long,
-    val title: String,
-    val valAmount: Int,
-    val type: Int,
-    val count: Int = 0,
-    val last: Long = 0L,
-    val order: Long = id,
-    val dueAtEpochMillis: Long? = null
+    @SerialName("id") val id: Long,
+    @SerialName("title") val title: String,
+    @SerialName("val") val valAmount: Int,
+    @SerialName("type") val type: Int,
+    @SerialName("count") val count: Int = 0,
+    @SerialName("last") val last: Long = 0L,
+    @SerialName("order") val order: Long = id,
+    @SerialName("dueAt") val dueAtEpochMillis: Long? = null,
+    @SerialName("list") val list: String? = null // For backward compatibility parsing
 ) {
     val isHabit: Boolean
         get() = type == KudoState.TYPE_HABIT
@@ -40,34 +45,37 @@ data class KudoTask(
         get() = valAmount
 }
 
+@Serializable
 data class KudoStoreItem(
-    val id: Long,
-    val title: String,
-    val cost: Int,
-    val type: Int = KudoState.STORE_ONCE
+    @SerialName("id") val id: Long,
+    @SerialName("title") val title: String,
+    @SerialName("cost") val cost: Int,
+    @SerialName("type") val type: Int = KudoState.STORE_ONCE
 )
 
+@Serializable
 data class KudoLogEntry(
-    val timestamp: Long,
-    val text: String,
-    val value: Int,
-    val baseValue: Int? = null,
-    val type: String,
-    val taskId: Long? = null,
-    val isHabit: Boolean = false,
-    val itemData: KudoLogItemData? = null
+    @SerialName("t") val timestamp: Long,
+    @SerialName("txt") val text: String,
+    @SerialName("v") val value: Int,
+    @SerialName("base") val baseValue: Int? = null,
+    @SerialName("type") val type: String,
+    @SerialName("taskId") val taskId: Long? = null,
+    @SerialName("isHabit") val isHabit: Boolean = false,
+    @SerialName("itemData") val itemData: KudoLogItemData? = null
 )
 
+@Serializable
 data class KudoLogItemData(
-    val id: Long,
-    val title: String,
-    val valAmount: Int? = null,
-    val cost: Int? = null,
-    val type: Int = 0,
-    val count: Int = 0,
-    val last: Long = 0L,
-    val order: Long = id,
-    val dueAtEpochMillis: Long? = null
+    @SerialName("id") val id: Long,
+    @SerialName("title") val title: String,
+    @SerialName("val") val valAmount: Int? = null,
+    @SerialName("cost") val cost: Int? = null,
+    @SerialName("type") val type: Int = 0,
+    @SerialName("count") val count: Int = 0,
+    @SerialName("last") val last: Long = 0L,
+    @SerialName("order") val order: Long = id,
+    @SerialName("dueAt") val dueAtEpochMillis: Long? = null
 ) {
     fun toTask(): KudoTask = KudoTask(
         id = id,

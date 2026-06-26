@@ -1,0 +1,42 @@
+private fun DashboardCard(
+    uiState: KudoUiState,
+    palette: KudoPalette,
+    revealProgress: Float,
+    title: String,
+    value: String,
+    onTitleChange: (String) -> Unit,
+    onValueChange: (String) -> Unit,
+    onModeToggle: () -> Unit,
+    onAdd: () -> Boolean
+) {
+    val haptics = rememberKudoHaptics()
+    val titlePlaceholder = when {
+        uiState.currentView == KudoViewModel.VIEW_STORE -> "Add to Store..."
+        uiState.taskCreationTarget == TaskCreationTarget.HABIT -> "Add Habit..."
+        else -> "Add Task..."
+    }
+    val valuePlaceholder = when {
+        uiState.currentView == KudoViewModel.VIEW_STORE -> "0"
+        uiState.taskCreationTarget == TaskCreationTarget.HABIT -> "10"
+        else -> "" // Suggests it is completely optional
+    }
+    val modeText = when {
+        uiState.currentView == KudoViewModel.VIEW_STORE && uiState.storeMode == KudoState.STORE_INFINITE -> "INFIN"
+        uiState.currentView == KudoViewModel.VIEW_STORE -> "ONCE"
+        uiState.taskCreationTarget == TaskCreationTarget.HABIT -> "HABIT"
+        else -> "TASK"
+    }
+    val modeColor = when {
+        uiState.currentView == KudoViewModel.VIEW_STORE -> palette.orange
+        uiState.taskCreationTarget == TaskCreationTarget.HABIT -> palette.gold
+        else -> palette.green
+    }
+    val valueColor = when {
+        uiState.currentView == KudoViewModel.VIEW_STORE -> palette.orange
+        value.isBlank() || value == "0" -> palette.textSub
+        else -> palette.green
+    }
+    val addButtonProgress = revealProgress.coerceIn(0f, 1f)
+    val addButtonScale = lerpFloat(0.7f, 1f, addButtonProgress)
+    val addButtonAlpha = lerpFloat(0.56f, 1f, addButtonProgress)
+    val interactionSource = remember { MutableInteractionSource() }

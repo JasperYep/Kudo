@@ -1,6 +1,7 @@
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
+    id("org.jetbrains.kotlin.plugin.serialization")
 }
 
 val releaseStoreFile = providers.environmentVariable("KUDO_RELEASE_STORE_FILE").orNull
@@ -103,7 +104,10 @@ dependencies {
     
     // Coroutines
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
-    
+
+    // Serialization
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.0")
+
     // Charts
     implementation("com.github.PhilJay:MPAndroidChart:v3.1.0")
     

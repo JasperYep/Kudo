@@ -1,0 +1,276 @@
+private fun TasksPage(
+    uiState: KudoUiState,
+    palette: KudoPalette,
+    modifier: Modifier = Modifier,
+    userScrollEnabled: Boolean = true,
+    onGestureLockChange: (Boolean) -> Unit,
+    onToggleHabits: () -> Unit,
+    onResetTaskSortMode: () -> Unit,
+    onExitHabitJiggle: () -> Unit,
+    onEnterHabitJiggle: () -> Unit,
+    onDeleteHabit: (Long) -> Unit,
+    onReorderTask: (List<Long>) -> Unit,
+    onReorderHabits: (List<Long>) -> Unit,
+    onCompleteTask: (Long) -> Unit,
+    onEditTask: (Long) -> Unit,
+    onCompleteHabit: (Long) -> Unit,
+    listState: LazyListState
+) {
+    val haptics = rememberKudoHaptics()
+    var isHabitGestureLocked by remember { mutableStateOf(false) }
+    var isTaskSwipeGestureLocked by remember { mutableStateOf(false) }
+    var isTaskLongPressGestureLocked by remember { mutableStateOf(false) }
+    val habits = remember(uiState.data.tasks) {
+        uiState.data.tasks.filter { it.type == KudoState.TYPE_HABIT }
+    }
+    var localHabits by remember { mutableStateOf(habits) }
+    val currentSortMode = uiState.data.taskSortMode
+    val tasks = remember(uiState.data.tasks, currentSortMode) {
+        sortTasksForDisplay(
+            tasks = uiState.data.tasks.filter { it.type == KudoState.TYPE_TASK },
+            sortMode = currentSortMode
+        )
+    }
+
+    var localTasks by remember { mutableStateOf(tasks) }
+    var lastTaskSwapHapticAtMs by remember { mutableStateOf(0L) }
+    val newTopTaskId = localTasks.lastOrNull()?.id?.takeIf { it == uiState.recentTaskInsertId }
+
+    val localTaskIds = remember(localTasks) { localTasks.map(KudoTask::id).toSet() }
+    val taskOrderIds = remember(tasks) { tasks.map(KudoTask::id) }
+    val localTaskOrderIds = remember(localTasks) { localTasks.map(KudoTask::id) }
+    val latestLocalTasks by rememberUpdatedState(localTasks)
+    val latestLocalTaskIds by rememberUpdatedState(localTaskIds)
+    val latestTaskOrderIds by rememberUpdatedState(taskOrderIds)
+    val latestLocalTaskOrderIds by rememberUpdatedState(localTaskOrderIds)
+    val latestOnReorderTask by rememberUpdatedState(onReorderTask)
+    var pendingDeleteHabitId by remember { mutableStateOf<Long?>(null) }
+    val dragCancelledAnimation = remember {
+        SpringDragCancelledAnimation(stiffness = ReorderCancelAnimationStiffness)
+    }
+    val state = key(listState) {
+        rememberReorderableLazyListState(
+            onMove = { from, to ->
+                val fromId = from.key as? Long
+                val toId = to.key as? Long
+                if (fromId != null && toId != null) {
+                    val currentTasks = latestLocalTasks
+                    val fromIndex = currentTasks.indexOfFirst { it.id == fromId }
+                    val toIndex = currentTasks.indexOfFirst { it.id == toId }
+                    val movedTasks = moveListItem(currentTasks, fromIndex, toIndex)
+                    if (movedTasks !== currentTasks) {
+                        localTasks = movedTasks
+                        lastTaskSwapHapticAtMs = maybeTriggerReorderSwapHaptic(
+                            haptics = haptics,
+                            lastHapticAtMs = lastTaskSwapHapticAtMs
+                        )
+                    }
+                }
+            },
+            canDragOver = { draggedOver, dragging ->
+                (draggedOver.key as? Long)?.let(latestLocalTaskIds::contains) == true &&
+                    (dragging.key as? Long)?.let(latestLocalTaskIds::contains) == true
+            },
+            listState = listState,
+            onDragEnd = { _, _ ->
+                lastTaskSwapHapticAtMs = 0L
+                if (latestLocalTaskOrderIds != latestTaskOrderIds) {
+                    haptics.vibrate(HapticConfirmMs)
+                    latestOnReorderTask(latestLocalTaskOrderIds)
+                }
+            },
+            maxScrollPerFrame = ReorderAutoScrollMax,
+            dragCancelledAnimation = dragCancelledAnimation
+        )
+    }
+    val isTaskReordering by remember(state) {
+        derivedStateOf { state.draggingItemIndex != null }
+    }
+    val isListGestureLocked =
+        isTaskReordering ||
+            isHabitGestureLocked ||
+            isTaskSwipeGestureLocked ||
+            isTaskLongPressGestureLocked
+
+    LaunchedEffect(habits) {
+        if (!isHabitGestureLocked) {
+            localHabits = habits
+        }
+    }
+    LaunchedEffect(tasks) {
+        if (!isTaskReordering) {
+            localTasks = tasks
+        }
+    }
+
+    LaunchedEffect(isListGestureLocked) {
+        onGestureLockChange(isListGestureLocked)
+    }
+    LaunchedEffect(uiState.isHabitJiggleMode) {
+        if (!uiState.isHabitJiggleMode) {
+            isHabitGestureLocked = false
+        }
+    }
+    DisposableEffect(Unit) {
+        onDispose {
+            isHabitGestureLocked = false
+            isTaskSwipeGestureLocked = false
+            isTaskLongPressGestureLocked = false
+            onGestureLockChange(false)
+        }
+    }
+
+    LazyColumn(
+        state = state.listState,
+        userScrollEnabled = userScrollEnabled && !isListGestureLocked,
+        modifier = modifier
+            .reorderable(state)
+    ) {
+        if (habits.isNotEmpty()) {
+            item(key = "habits_header") {
+                SectionHeader(
+                    title = "Habits",
+                    palette = palette,
+                    collapsible = true,
+                    collapsed = uiState.habitsCollapsed,
+                    onClick = {
+                        onExitHabitJiggle()
+                        onToggleHabits()
+                    }
+                )
+            }
+            item(key = "habits_grid") {
+                AnimatedVisibility(
+                    visible = !uiState.habitsCollapsed,
+                    modifier = Modifier.clipToBounds(),
+                    enter = fadeIn(animationSpec = tween(150)) + expandVertically(
+                        animationSpec = spring(
+                            dampingRatio = 0.86f,
+                            stiffness = 520f
+                        )
+                    ),
+                    exit = fadeOut(animationSpec = tween(120)) + shrinkVertically(
+                        animationSpec = tween(durationMillis = 180)
+                    )
+                ) {
+                    HabitsGrid(
+                        habits = localHabits,
+                        palette = palette,
+                        finalMultiplier = uiState.data.multiplier,
+                        isJiggleMode = uiState.isHabitJiggleMode,
+                        modifier = Modifier.padding(horizontal = 16.dp),
+                        onGestureLockChange = { isHabitGestureLocked = it },
+                        onHabitsChange = { localHabits = it },
+                        onDragFinished = {
+                            if (localHabits.map(KudoTask::id) != habits.map(KudoTask::id)) {
+                                onReorderHabits(localHabits.map(KudoTask::id))
+                            }
+                        },
+                        onCompleteHabit = onCompleteHabit,
+                        onEnterJiggle = onEnterHabitJiggle,
+                        onDeleteHabit = { pendingDeleteHabitId = it }
+                    )
+                }
+            }
+        }
+
+        item(key = "tasks_header") {
+            TaskQueueHeader(
+                sortMode = uiState.data.taskSortMode,
+                palette = palette,
+                onLongPress = {
+                    onExitHabitJiggle()
+                    onResetTaskSortMode()
+                }
+            )
+        }
+
+        if (tasks.isEmpty()) {
+            item(key = "empty_tasks") {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .then(
+                            if (uiState.isHabitJiggleMode) {
+                                Modifier.clickable(
+                                    interactionSource = remember { MutableInteractionSource() },
+                                    indication = null
+                                ) { onExitHabitJiggle() }
+                            } else {
+                                Modifier
+                            }
+                        )
+                ) {
+                    EmptyState(text = "No tasks", palette = palette)
+                }
+            }
+        } else {
+            items(localTasks, key = { it.id }) { task ->
+                val isActive = localTasks.firstOrNull()?.id == task.id
+                ReorderableItem(
+                    state = state,
+                    key = task.id,
+                    defaultDraggingModifier = Modifier
+                ) { isDragging ->
+                    AnimatedInsertedItem(animate = task.id == newTopTaskId) {
+                        TaskRow(
+                            task = task,
+                            palette = palette,
+                            finalMultiplier = uiState.data.multiplier,
+                            isActive = isActive,
+                            isDragging = isDragging,
+                            modifier = Modifier
+                                .padding(horizontal = 16.dp, vertical = 2.dp)
+                                .lockParentGestureOnLongPress {
+                                    isTaskLongPressGestureLocked = it
+                                }
+                                .reorderLongPressFeedback(
+                                    enabled = true,
+                                    haptics = haptics
+                                )
+                                .detectReorderAfterLongPress(state),
+                            swipeEnabled = !isDragging && !isTaskLongPressGestureLocked,
+                            onGestureLockChange = { isTaskSwipeGestureLocked = it },
+                            onComplete = {
+                                onExitHabitJiggle()
+                                onCompleteTask(task.id)
+                            },
+                            onEdit = {
+                                onExitHabitJiggle()
+                                onEditTask(task.id)
+                            }
+                        )
+                    }
+                }
+            }
+        }
+
+        item(key = "tasks_bottom_spacer") {
+            Spacer(modifier = Modifier.height(24.dp))
+        }
+    }
+    if (pendingDeleteHabitId != null) {
+        AlertDialog(
+            onDismissRequest = { pendingDeleteHabitId = null },
+            title = { Text("Delete habit?") },
+            text = { Text("This habit will be removed from your list.") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        val id = pendingDeleteHabitId ?: return@TextButton
+                        pendingDeleteHabitId = null
+                        onDeleteHabit(id)
+                    }
+                ) {
+                    Text("Delete")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingDeleteHabitId = null }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+}
+
