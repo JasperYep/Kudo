@@ -2,7 +2,6 @@ package com.kudo.app.core.model
 
 import androidx.compose.runtime.Immutable
 
-@Immutable
 data class KudoState(
     val coins: Int = 0,
     val tasks: List<KudoTask> = emptyList(),
@@ -24,7 +23,6 @@ data class KudoState(
     }
 }
 
-@Immutable
 data class KudoTask(
     val id: Long,
     val title: String,
@@ -42,7 +40,6 @@ data class KudoTask(
         get() = valAmount
 }
 
-@Immutable
 data class KudoStoreItem(
     val id: Long,
     val title: String,
@@ -50,7 +47,6 @@ data class KudoStoreItem(
     val type: Int = KudoState.STORE_ONCE
 )
 
-@Immutable
 data class KudoLogEntry(
     val timestamp: Long,
     val text: String,
@@ -62,7 +58,6 @@ data class KudoLogEntry(
     val itemData: KudoLogItemData? = null
 )
 
-@Immutable
 data class KudoLogItemData(
     val id: Long,
     val title: String,
@@ -114,4 +109,3 @@ data class KudoLogItemData(
 }
 
 
-@Immutable
