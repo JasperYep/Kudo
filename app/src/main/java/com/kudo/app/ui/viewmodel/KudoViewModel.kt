@@ -8,6 +8,7 @@ import androidx.lifecycle.viewModelScope
 import com.kudo.app.KudoApplication
 import com.kudo.app.core.model.KudoReducer
 import com.kudo.app.core.model.KudoState
+import com.kudo.app.core.model.KudoTaskImportDraft
 import com.kudo.app.core.model.KudoTaskTextImport
 import com.kudo.app.core.repository.KudoStateRepository
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -46,7 +47,9 @@ class KudoViewModel(application: Application) : AndroidViewModel(application) {
         val recentStoreInsertId: Long? = null,
         val showUndoBanner: Boolean = false,
         val isNotebookVisible: Boolean = false,
-        val selectedNotebookNoteId: Long? = null
+        val selectedNotebookNoteId: Long? = null,
+        val isImportPreviewVisible: Boolean = false,
+        val importPreviewDrafts: List<KudoTaskImportDraft> = emptyList()
     )
     private val viewState = MutableStateFlow(KudoViewState())
 
@@ -70,7 +73,9 @@ class KudoViewModel(application: Application) : AndroidViewModel(application) {
             recentStoreInsertId = view.recentStoreInsertId,
             showUndoBanner = view.showUndoBanner,
             isNotebookVisible = view.isNotebookVisible,
-            selectedNotebookNoteId = view.selectedNotebookNoteId
+            selectedNotebookNoteId = view.selectedNotebookNoteId,
+            isImportPreviewVisible = view.isImportPreviewVisible,
+            importPreviewDrafts = view.importPreviewDrafts
         )
     }.stateIn(
         scope = viewModelScope,
@@ -426,6 +431,70 @@ class KudoViewModel(application: Application) : AndroidViewModel(application) {
         launchStateUpdate { state -> KudoReducer.deleteNote(state, id) }
     }
 
+    fun showImportPreview(text: String) {
+        val drafts = KudoTaskTextImport.parse(text)
+        if (drafts.isNotEmpty()) {
+            viewState.update {
+                it.copy(
+                    isImportPreviewVisible = true,
+                    importPreviewDrafts = drafts
+                )
+            }
+        }
+    }
+
+    fun updateImportDraft(index: Int, title: String, value: Int) {
+        viewState.update { state ->
+            val updatedDrafts = state.importPreviewDrafts.toMutableList()
+            if (index in updatedDrafts.indices) {
+                updatedDrafts[index] = KudoTaskImportDraft(title, value)
+            }
+            state.copy(importPreviewDrafts = updatedDrafts)
+        }
+    }
+
+    fun deleteImportDraft(index: Int) {
+        viewState.update { state ->
+            val updatedDrafts = state.importPreviewDrafts.toMutableList()
+            if (index in updatedDrafts.indices) {
+                updatedDrafts.removeAt(index)
+            }
+            state.copy(importPreviewDrafts = updatedDrafts)
+        }
+    }
+
+    fun confirmImportPreview() {
+        val drafts = viewState.value.importPreviewDrafts
+        if (drafts.isEmpty()) {
+            dismissImportPreview()
+            return
+        }
+
+        val createdAt = System.currentTimeMillis()
+        val lastCreatedId = createdAt + drafts.lastIndex
+        viewState.update {
+            it.copy(
+                currentView = VIEW_TASKS,
+                taskCreationTarget = TaskCreationTarget.TASK,
+                recentTaskInsertId = lastCreatedId,
+                isImportPreviewVisible = false
+            )
+        }
+        launchStateUpdate { state ->
+            KudoReducer.addImportedTasks(state, drafts, now = createdAt)
+        }
+        viewState.update { it.copy(importPreviewDrafts = emptyList(), recentTaskInsertId = null) }
+    }
+
+    fun dismissImportPreview() {
+        viewState.update {
+            it.copy(
+                isImportPreviewVisible = false,
+                importPreviewDrafts = emptyList()
+            )
+        }
+    }
+
     private fun parseEditValue(raw: String): Int {
         return raw.toIntOrNull()?.let(::abs) ?: 0
     }
@@ -472,7 +541,9 @@ data class KudoUiState(
     val recentStoreInsertId: Long? = null,
     val showUndoBanner: Boolean = false,
     val isNotebookVisible: Boolean = false,
-    val selectedNotebookNoteId: Long? = null
+    val selectedNotebookNoteId: Long? = null,
+    val isImportPreviewVisible: Boolean = false,
+    val importPreviewDrafts: List<KudoTaskImportDraft> = emptyList()
 )
 
 @Immutable

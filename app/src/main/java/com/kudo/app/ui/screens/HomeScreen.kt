@@ -351,7 +351,15 @@ fun HomeScreen(
                         title = taskDraftTitle,
                         value = taskDraftValue,
                         listState = tasksListState,
-                        onTitleChange = { taskDraftTitle = it },
+                        onTitleChange = {
+                            if (it.contains("\n") && it.lines().size > 1) {
+                                // Multi-line paste detected, show import preview
+                                viewModel.showImportPreview(it)
+                                taskDraftTitle = ""
+                            } else {
+                                taskDraftTitle = it
+                            }
+                        },
                         onValueChange = { taskDraftValue = it.filter(Char::isDigit) },
                         onModeToggle = viewModel::cycleTaskCreationTarget,
                         onAdd = {
@@ -452,6 +460,17 @@ fun HomeScreen(
             onTitleChange = viewModel::updateNotebookNoteTitle,
             onContentChange = viewModel::updateNotebookNoteContent,
             onClose = viewModel::closeNotebook
+        )
+    }
+
+    if (uiState.isImportPreviewVisible) {
+        ImportPreviewOverlay(
+            uiState = uiState,
+            palette = palette,
+            onUpdateDraft = viewModel::updateImportDraft,
+            onDeleteDraft = viewModel::deleteImportDraft,
+            onConfirm = viewModel::confirmImportPreview,
+            onDismiss = viewModel::dismissImportPreview
         )
     }
 
