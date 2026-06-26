@@ -189,12 +189,12 @@ class KudoViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun completeTask(id: Long) {
-        launchStateUpdate { state -> KudoReducer.completeTask(state, id) }
+        viewModelScope.launch { repository.updateState { state -> KudoReducer.completeTask(state, id) } }
         triggerUndoBanner()
     }
 
     fun completeHabit(id: Long) {
-        launchStateUpdate { state -> KudoReducer.completeHabit(state, id) }
+        viewModelScope.launch { repository.updateState { state -> KudoReducer.completeHabit(state, id) } }
         triggerUndoBanner()
     }
 
@@ -205,14 +205,14 @@ class KudoViewModel(application: Application) : AndroidViewModel(application) {
             return false
         }
 
-        launchStateUpdate { state -> KudoReducer.buyItem(state, id) }
+        viewModelScope.launch { repository.updateState { state -> KudoReducer.buyItem(state, id) } }
         triggerUndoBanner()
         return true
     }
 
     fun undoLog(index: Int) {
         dismissUndoBanner()
-        launchStateUpdate { state -> KudoReducer.undoLog(state, index) }
+        viewModelScope.launch { repository.updateState { state -> KudoReducer.undoLog(state, index) } }
     }
 
     fun openEditTask(id: Long) {
@@ -236,7 +236,7 @@ class KudoViewModel(application: Application) : AndroidViewModel(application) {
         val sanitizedTitle = title.trim()
         val parsedValue = parseEditValue(valueInput)
 
-        launchAsync {
+        viewModelScope.launch {
             repository.updateState { state ->
                 when (target.kind) {
                     KIND_TASK -> KudoReducer.updateTask(
@@ -263,7 +263,7 @@ class KudoViewModel(application: Application) : AndroidViewModel(application) {
 
     fun deleteEditing() {
         val target = viewState.value.editingTarget ?: return
-        launchAsync {
+        viewModelScope.launch {
             repository.updateState { state ->
                 when (target.kind) {
                     KIND_TASK -> KudoReducer.deleteTask(state, target.id)
@@ -300,42 +300,44 @@ class KudoViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun reorderTasks(orderedIds: List<Long>) {
-        launchStateUpdate { state ->
-            KudoReducer.setTaskSortMode(
-                state = KudoReducer.reorderTasks(state, orderedIds),
-                sortMode = KudoState.TASK_SORT_MANUAL
-            )
+        viewModelScope.launch {
+            repository.updateState { state ->
+                KudoReducer.setTaskSortMode(
+                    state = KudoReducer.reorderTasks(state, orderedIds),
+                    sortMode = KudoState.TASK_SORT_MANUAL
+                )
+            }
         }
     }
 
     fun resetTaskSortMode() {
-        launchStateUpdate { state -> KudoReducer.resetTaskOrder(state) }
+        viewModelScope.launch { repository.updateState { state -> KudoReducer.resetTaskOrder(state) } }
     }
 
     fun reorderHabits(orderedIds: List<Long>) {
-        launchStateUpdate { state -> KudoReducer.reorderHabits(state, orderedIds) }
+        viewModelScope.launch { repository.updateState { state -> KudoReducer.reorderHabits(state, orderedIds) } }
     }
 
     fun reorderStore(orderedIds: List<Long>) {
-        launchStateUpdate { state -> KudoReducer.reorderStore(state, orderedIds) }
+        viewModelScope.launch { repository.updateState { state -> KudoReducer.reorderStore(state, orderedIds) } }
     }
 
     fun deleteTaskItem(id: Long) {
-        launchStateUpdate { state -> KudoReducer.deleteTask(state, id) }
+        viewModelScope.launch { repository.updateState { state -> KudoReducer.deleteTask(state, id) } }
     }
 
     fun setTheme(theme: String) {
-        launchAsync { repository.setTheme(theme) }
+        viewModelScope.launch { repository.setTheme(theme) }
     }
 
     fun exportToUri(uri: Uri, onComplete: (Boolean) -> Unit = {}) {
-        launchAsync {
+        viewModelScope.launch {
             onComplete(repository.exportToUri(uri))
         }
     }
 
     fun importFromUri(uri: Uri, onComplete: (Boolean) -> Unit = {}) {
-        launchAsync {
+        viewModelScope.launch {
             onComplete(repository.importFromUri(uri))
         }
     }
@@ -356,7 +358,7 @@ class KudoViewModel(application: Application) : AndroidViewModel(application) {
                 recentTaskInsertId = lastCreatedId
             )
         }
-        launchAsync {
+        viewModelScope.launch {
             repository.updateState { state ->
                 KudoReducer.addImportedTasks(
                     state = state,
@@ -432,8 +434,10 @@ class KudoViewModel(application: Application) : AndroidViewModel(application) {
                 isImportPreviewVisible = false
             )
         }
-        launchStateUpdate { state ->
-            KudoReducer.addImportedTasks(state, drafts, now = createdAt)
+        viewModelScope.launch {
+            repository.updateState { state ->
+                KudoReducer.addImportedTasks(state, drafts, now = createdAt)
+            }
         }
         viewState.update { it.copy(importPreviewDrafts = emptyList(), recentTaskInsertId = null) }
     }
@@ -449,22 +453,6 @@ class KudoViewModel(application: Application) : AndroidViewModel(application) {
 
     private fun parseEditValue(raw: String): Int {
         return raw.toIntOrNull()?.let(::abs) ?: 0
-    }
-
-    private fun launchAsync(block: suspend () -> Unit) {
-        viewModelScope.launch { block() }
-    }
-
-    private fun launchStateUpdate(transform: (KudoState) -> KudoState) {
-        launchAsync {
-            repository.updateState(transform)
-        }
-    }
-
-    private fun launchSaveState(state: KudoState) {
-        launchAsync {
-            repository.saveState(state)
-        }
     }
 
     companion object {
