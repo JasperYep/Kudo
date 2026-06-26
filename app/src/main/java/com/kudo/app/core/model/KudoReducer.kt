@@ -311,23 +311,24 @@ object KudoReducer {
         orderedIds: List<Long>,
         predicate: (KudoTask) -> Boolean
     ): KudoState {
-        val targetTasks = state.tasks.filter(predicate)
-        if (targetTasks.isEmpty()) return state
+        val allTasks = state.tasks
+        val targetIndices = allTasks.mapIndexedNotNull { index, task -> if (predicate(task)) index else null }
+        if (targetIndices.isEmpty()) return state
 
-        val taskMap = state.tasks.associateBy { it.id }
-        val orderedIdSet = orderedIds.toSet()
-        val reorderedTargets = orderedIds.mapNotNull(taskMap::get).filter(predicate)
-        val remainingTargets = targetTasks.filterNot { it.id in orderedIdSet }
-        val replacementIterator = (reorderedTargets + remainingTargets).iterator()
+        val taskMap = allTasks.associateBy { it.id }
+        // Reorder the matched tasks according to orderedIds
+        val reorderedTargets = orderedIds.mapNotNull { taskMap[it] }.filter(predicate)
+        // Tasks that matched the predicate but weren't in orderedIds (fallback)
+        val remainingTargets = allTasks.filter(predicate).filterNot { it.id in orderedIds }
+        val newTargets = reorderedTargets + remainingTargets
+
+        val resultTasks = allTasks.toMutableList()
+        targetIndices.forEachIndexed { i, originalIndex ->
+            resultTasks[originalIndex] = newTargets[i]
+        }
 
         return state.copy(
-            tasks = state.tasks.map { task ->
-                if (predicate(task) && replacementIterator.hasNext()) {
-                    replacementIterator.next()
-                } else {
-                    task
-                }
-            }.mapIndexed { index, task ->
+            tasks = resultTasks.mapIndexed { index, task ->
                 task.copy(order = index.toLong())
             }
         )

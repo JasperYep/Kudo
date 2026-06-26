@@ -346,7 +346,9 @@ fun HomeScreen(
             ) {
                 when (uiState.currentView) {
                     KudoViewModel.VIEW_TASKS -> PullComposerPage(
-                        uiState = uiState,
+                        currentView = uiState.currentView,
+                        taskCreationTarget = uiState.taskCreationTarget,
+                        storeMode = uiState.storeMode,
                         palette = palette,
                         title = taskDraftTitle,
                         value = taskDraftValue,
@@ -374,7 +376,12 @@ fun HomeScreen(
                         onRevealProgressChanged = { activeComposerRevealProgress = it }
                     ) { modifier, pageScrollEnabled, onGestureLockChange ->
                         TasksPage(
-                            uiState = uiState,
+                            tasks = uiState.data.tasks,
+                            multiplier = uiState.data.multiplier,
+                            taskSortMode = uiState.data.taskSortMode,
+                            habitsCollapsed = uiState.habitsCollapsed,
+                            isHabitJiggleMode = uiState.isHabitJiggleMode,
+                            recentTaskInsertId = uiState.recentTaskInsertId,
                             palette = palette,
                             modifier = modifier,
                             userScrollEnabled = pageScrollEnabled,
@@ -394,7 +401,9 @@ fun HomeScreen(
                     }
 
                     KudoViewModel.VIEW_STORE -> PullComposerPage(
-                        uiState = uiState,
+                        currentView = uiState.currentView,
+                        taskCreationTarget = uiState.taskCreationTarget,
+                        storeMode = uiState.storeMode,
                         palette = palette,
                         title = storeDraftTitle,
                         value = storeDraftValue,
@@ -414,7 +423,9 @@ fun HomeScreen(
                         onRevealProgressChanged = { activeComposerRevealProgress = it }
                     ) { modifier, pageScrollEnabled, onGestureLockChange ->
                         StorePage(
-                            uiState = uiState,
+                            storeItems = uiState.data.store,
+                            coins = uiState.data.coins,
+                            recentStoreInsertId = uiState.recentStoreInsertId,
                             palette = palette,
                             modifier = modifier,
                             userScrollEnabled = pageScrollEnabled,
@@ -728,7 +739,9 @@ private fun ComposerRevealPanel(
 
 @Composable
 private fun PullComposerPage(
-    uiState: KudoUiState,
+    currentView: String,
+    taskCreationTarget: TaskCreationTarget,
+    storeMode: Int,
     palette: KudoPalette,
     title: String,
     value: String,
@@ -1001,7 +1014,9 @@ private fun PullComposerPage(
                 }
             ) {
                 DashboardCard(
-                    uiState = uiState,
+                    currentView = currentView,
+                    taskCreationTarget = taskCreationTarget,
+                    storeMode = storeMode,
                     palette = palette,
                     revealProgress = composerRevealProgress,
                     title = title,
@@ -1133,7 +1148,9 @@ private fun Header(
 
 @Composable
 private fun DashboardCard(
-    uiState: KudoUiState,
+    currentView: String,
+    taskCreationTarget: TaskCreationTarget,
+    storeMode: Int,
     palette: KudoPalette,
     revealProgress: Float,
     title: String,
@@ -1145,28 +1162,28 @@ private fun DashboardCard(
 ) {
     val haptics = rememberKudoHaptics()
     val titlePlaceholder = when {
-        uiState.currentView == KudoViewModel.VIEW_STORE -> "Add to Store..."
-        uiState.taskCreationTarget == TaskCreationTarget.HABIT -> "Add Habit..."
+        currentView == KudoViewModel.VIEW_STORE -> "Add to Store..."
+        taskCreationTarget == TaskCreationTarget.HABIT -> "Add Habit..."
         else -> "Add Task..."
     }
     val valuePlaceholder = when {
-        uiState.currentView == KudoViewModel.VIEW_STORE -> "0"
-        uiState.taskCreationTarget == TaskCreationTarget.HABIT -> "10"
+        currentView == KudoViewModel.VIEW_STORE -> "0"
+        taskCreationTarget == TaskCreationTarget.HABIT -> "10"
         else -> "" // Suggests it is completely optional
     }
     val modeText = when {
-        uiState.currentView == KudoViewModel.VIEW_STORE && uiState.storeMode == KudoState.STORE_INFINITE -> "INFIN"
-        uiState.currentView == KudoViewModel.VIEW_STORE -> "ONCE"
-        uiState.taskCreationTarget == TaskCreationTarget.HABIT -> "HABIT"
+        currentView == KudoViewModel.VIEW_STORE && storeMode == KudoState.STORE_INFINITE -> "INFIN"
+        currentView == KudoViewModel.VIEW_STORE -> "ONCE"
+        taskCreationTarget == TaskCreationTarget.HABIT -> "HABIT"
         else -> "TASK"
     }
     val modeColor = when {
-        uiState.currentView == KudoViewModel.VIEW_STORE -> palette.orange
-        uiState.taskCreationTarget == TaskCreationTarget.HABIT -> palette.gold
+        currentView == KudoViewModel.VIEW_STORE -> palette.orange
+        taskCreationTarget == TaskCreationTarget.HABIT -> palette.gold
         else -> palette.green
     }
     val valueColor = when {
-        uiState.currentView == KudoViewModel.VIEW_STORE -> palette.orange
+        currentView == KudoViewModel.VIEW_STORE -> palette.orange
         value.isBlank() || value == "0" -> palette.textSub
         else -> palette.green
     }
@@ -1307,7 +1324,12 @@ private fun DashboardCard(
 
 @Composable
 private fun TasksPage(
-    uiState: KudoUiState,
+    tasks: List<KudoTask>,
+    multiplier: Float,
+    taskSortMode: Int,
+    habitsCollapsed: Boolean,
+    isHabitJiggleMode: Boolean,
+    recentTaskInsertId: Long?,
     palette: KudoPalette,
     modifier: Modifier = Modifier,
     userScrollEnabled: Boolean = true,
@@ -1328,21 +1350,21 @@ private fun TasksPage(
     var isHabitGestureLocked by remember { mutableStateOf(false) }
     var isTaskSwipeGestureLocked by remember { mutableStateOf(false) }
     var isTaskLongPressGestureLocked by remember { mutableStateOf(false) }
-    val habits = remember(uiState.data.tasks) {
-        uiState.data.tasks.filter { it.type == KudoState.TYPE_HABIT }
+    val habits = remember(tasks) {
+        tasks.filter { it.type == KudoState.TYPE_HABIT }
     }
     var localHabits by remember { mutableStateOf(habits) }
-    val currentSortMode = uiState.data.taskSortMode
-    val tasks = remember(uiState.data.tasks, currentSortMode) {
+    val currentSortMode = taskSortMode
+    val tasks = remember(tasks, currentSortMode) {
         sortTasksForDisplay(
-            tasks = uiState.data.tasks.filter { it.type == KudoState.TYPE_TASK },
+            tasks = tasks.filter { it.type == KudoState.TYPE_TASK },
             sortMode = currentSortMode
         )
     }
 
     var localTasks by remember { mutableStateOf(tasks) }
     var lastTaskSwapHapticAtMs by remember { mutableStateOf(0L) }
-    val newTopTaskId = localTasks.lastOrNull()?.id?.takeIf { it == uiState.recentTaskInsertId }
+    val newTopTaskId = localTasks.lastOrNull()?.id?.takeIf { it == recentTaskInsertId }
 
     val localTaskIds = remember(localTasks) { localTasks.map(KudoTask::id).toSet() }
     val taskOrderIds = remember(tasks) { tasks.map(KudoTask::id) }
@@ -1414,8 +1436,8 @@ private fun TasksPage(
     LaunchedEffect(isListGestureLocked) {
         onGestureLockChange(isListGestureLocked)
     }
-    LaunchedEffect(uiState.isHabitJiggleMode) {
-        if (!uiState.isHabitJiggleMode) {
+    LaunchedEffect(isHabitJiggleMode) {
+        if (!isHabitJiggleMode) {
             isHabitGestureLocked = false
         }
     }
@@ -1440,7 +1462,7 @@ private fun TasksPage(
                     title = "Habits",
                     palette = palette,
                     collapsible = true,
-                    collapsed = uiState.habitsCollapsed,
+                    collapsed = habitsCollapsed,
                     onClick = {
                         onExitHabitJiggle()
                         onToggleHabits()
@@ -1449,7 +1471,7 @@ private fun TasksPage(
             }
             item(key = "habits_grid") {
                 AnimatedVisibility(
-                    visible = !uiState.habitsCollapsed,
+                    visible = !habitsCollapsed,
                     modifier = Modifier.clipToBounds(),
                     enter = fadeIn(animationSpec = tween(150)) + expandVertically(
                         animationSpec = spring(
@@ -1464,8 +1486,8 @@ private fun TasksPage(
                     HabitsGrid(
                         habits = localHabits,
                         palette = palette,
-                        finalMultiplier = uiState.data.multiplier,
-                        isJiggleMode = uiState.isHabitJiggleMode,
+                        finalMultiplier = multiplier,
+                        isJiggleMode = isHabitJiggleMode,
                         modifier = Modifier.padding(horizontal = 16.dp),
                         onGestureLockChange = { isHabitGestureLocked = it },
                         onHabitsChange = { localHabits = it },
@@ -1484,7 +1506,7 @@ private fun TasksPage(
 
         item(key = "tasks_header") {
             TaskQueueHeader(
-                sortMode = uiState.data.taskSortMode,
+                sortMode = taskSortMode,
                 palette = palette,
                 onLongPress = {
                     onExitHabitJiggle()
@@ -1499,7 +1521,7 @@ private fun TasksPage(
                     modifier = Modifier
                         .fillMaxWidth()
                         .then(
-                            if (uiState.isHabitJiggleMode) {
+                            if (isHabitJiggleMode) {
                                 Modifier.clickable(
                                     interactionSource = remember { MutableInteractionSource() },
                                     indication = null
@@ -1524,7 +1546,7 @@ private fun TasksPage(
                         TaskRow(
                             task = task,
                             palette = palette,
-                            finalMultiplier = uiState.data.multiplier,
+                            finalMultiplier = multiplier,
                             isActive = isActive,
                             isDragging = isDragging,
                             modifier = Modifier
@@ -1584,7 +1606,9 @@ private fun TasksPage(
 
 @Composable
 private fun StorePage(
-    uiState: KudoUiState,
+    storeItems: List<KudoStoreItem>,
+    coins: Int,
+    recentStoreInsertId: Long?,
     palette: KudoPalette,
     modifier: Modifier = Modifier,
     userScrollEnabled: Boolean = true,
@@ -1595,11 +1619,11 @@ private fun StorePage(
     listState: LazyListState
 ) {
     val haptics = rememberKudoHaptics()
-    var localStore by remember { mutableStateOf(uiState.data.store) }
+    var localStore by remember { mutableStateOf(storeItems) }
     var isStoreItemGestureLocked by remember { mutableStateOf(false) }
-    val storeOrderIds = remember(uiState.data.store) { uiState.data.store.map(KudoStoreItem::id) }
+    val storeOrderIds = remember(storeItems) { storeItems.map(KudoStoreItem::id) }
     val localStoreOrderIds = remember(localStore) { localStore.map(KudoStoreItem::id) }
-    val newTopStoreId = localStore.firstOrNull()?.id?.takeIf { it == uiState.recentStoreInsertId }
+    val newTopStoreId = localStore.firstOrNull()?.id?.takeIf { it == recentStoreInsertId }
     val storeIds = remember(localStore) { localStore.map(KudoStoreItem::id).toSet() }
     val latestLocalStore by rememberUpdatedState(localStore)
     val latestStoreOrderIds by rememberUpdatedState(storeOrderIds)
@@ -1649,9 +1673,9 @@ private fun StorePage(
     }
     val isStoreGestureLocked = isStoreReordering || isStoreItemGestureLocked
 
-    LaunchedEffect(uiState.data.store) {
+    LaunchedEffect(storeItems) {
         if (!isStoreReordering) {
-            localStore = uiState.data.store
+            localStore = storeItems
         }
     }
     LaunchedEffect(isStoreGestureLocked) {
@@ -1675,7 +1699,7 @@ private fun StorePage(
                 title = "Rewards Store",
                 palette = palette
             )
-            if (uiState.data.store.isEmpty()) {
+            if (storeItems.isEmpty()) {
                 EmptyState(text = "Empty", palette = palette)
             }
         }
@@ -1689,7 +1713,7 @@ private fun StorePage(
                 AnimatedInsertedItem(animate = item.id == newTopStoreId) {
                     StoreRow(
                         item = item,
-                        coins = uiState.data.coins,
+                        coins = coins,
                         palette = palette,
                         isDragging = isDragging,
                         modifier = Modifier
@@ -1775,6 +1799,7 @@ private fun HabitsGrid(
                 ).toDp()
         }
         val itemWidthDp = with(density) { itemWidthPx.toDp() }
+        val jiggleRotation = rememberHabitJiggleRotation(isJiggleMode)
 
         Box(
             modifier = Modifier
@@ -1845,6 +1870,7 @@ private fun HabitsGrid(
                         finalMultiplier = finalMultiplier,
                         isJiggleMode = isJiggleMode,
                         isDragging = isDragging,
+                        jiggleRotation = jiggleRotation,
                         modifier = Modifier
                             .offset { animatedOffset }
                             .width(itemWidthDp)
@@ -2326,6 +2352,7 @@ private fun HabitChip(
     finalMultiplier: Float,
     isJiggleMode: Boolean,
     isDragging: Boolean,
+    jiggleRotation: Float,
     modifier: Modifier = Modifier,
     onComplete: () -> Unit,
     onEnterJiggle: () -> Unit,
@@ -2334,7 +2361,6 @@ private fun HabitChip(
     val haptics = rememberKudoHaptics()
     val scope = rememberCoroutineScope()
     val shape = RoundedCornerShape(16.dp)
-    val jiggleRotation = rememberHabitJiggleRotation(isJiggleMode)
     val completedToday = remember(task.last) { isToday(task.last) }
     val value = remember(task.valAmount, finalMultiplier) {
         (task.valAmount * finalMultiplier).toInt()
