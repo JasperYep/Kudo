@@ -36,7 +36,11 @@ data class KudoTask(
     @SerialName("last") val last: Long = 0L,
     @SerialName("order") val order: Long = id,
     @SerialName("dueAt") val dueAtEpochMillis: Long? = null,
-    @SerialName("list") val list: String? = null // For backward compatibility parsing
+    @SerialName("taskMultiplier") val taskMultiplier: Int = 1,
+    @SerialName("list") val list: String? = null, // For backward compatibility parsing
+    @SerialName("isTimerRunning") val isTimerRunning: Boolean = false,
+    @SerialName("accumulatedTimeMillis") val accumulatedTimeMillis: Long = 0L,
+    @SerialName("lastTimerStart") val lastTimerStart: Long = 0L,
 ) {
     val isHabit: Boolean
         get() = type == KudoState.TYPE_HABIT
@@ -75,7 +79,8 @@ data class KudoLogItemData(
     @SerialName("count") val count: Int = 0,
     @SerialName("last") val last: Long = 0L,
     @SerialName("order") val order: Long = id,
-    @SerialName("dueAt") val dueAtEpochMillis: Long? = null
+    @SerialName("dueAt") val dueAtEpochMillis: Long? = null,
+    @SerialName("taskMultiplier") val taskMultiplier: Int = 1
 ) {
     fun toTask(): KudoTask = KudoTask(
         id = id,
@@ -85,7 +90,8 @@ data class KudoLogItemData(
         count = count,
         last = last,
         order = order,
-        dueAtEpochMillis = dueAtEpochMillis
+        dueAtEpochMillis = dueAtEpochMillis,
+        taskMultiplier = taskMultiplier
     )
 
     fun toStoreItem(): KudoStoreItem = KudoStoreItem(
@@ -104,7 +110,8 @@ data class KudoLogItemData(
             count = task.count,
             last = task.last,
             order = task.order,
-            dueAtEpochMillis = task.dueAtEpochMillis
+            dueAtEpochMillis = task.dueAtEpochMillis,
+            taskMultiplier = task.taskMultiplier
         )
 
         fun fromStoreItem(item: KudoStoreItem): KudoLogItemData = KudoLogItemData(

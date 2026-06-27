@@ -38,6 +38,8 @@ class KudoViewModel(application: Application) : AndroidViewModel(application) {
         val currentView: String = VIEW_TASKS,
         val taskCreationTarget: TaskCreationTarget = TaskCreationTarget.TASK,
         val storeMode: Int = KudoState.STORE_ONCE,
+    val taskMultiplierMode: Int = 1,
+        val taskMultiplierMode: Int = 1,
         val habitsCollapsed: Boolean = false,
         val habitJiggleMode: Boolean = false,
         val settingsVisible: Boolean = false,
@@ -62,6 +64,7 @@ class KudoViewModel(application: Application) : AndroidViewModel(application) {
             currentView = view.currentView,
             taskCreationTarget = view.taskCreationTarget,
             storeMode = view.storeMode,
+            taskMultiplierMode = view.taskMultiplierMode,
             habitsCollapsed = view.habitsCollapsed,
             isHabitJiggleMode = view.habitJiggleMode,
             isSettingsVisible = view.settingsVisible,
@@ -96,6 +99,17 @@ class KudoViewModel(application: Application) : AndroidViewModel(application) {
                     TaskCreationTarget.HABIT -> TaskCreationTarget.TASK
                 }
             )
+        }
+    }
+
+    fun toggleTaskMultiplier() {
+        viewState.update { 
+            val next = when (it.taskMultiplierMode) {
+                1 -> 2
+                2 -> 3
+                else -> 1
+            }
+            it.copy(taskMultiplierMode = next)
         }
     }
 
@@ -139,6 +153,7 @@ class KudoViewModel(application: Application) : AndroidViewModel(application) {
                     )
                 } else {
                     KudoReducer.addTask(
+                        taskMultiplier = if (current.taskCreationTarget == TaskCreationTarget.TASK) current.taskMultiplierMode else 1,
                         state = state,
                         title = trimmedTitle,
                         value = parsedValue,
@@ -186,6 +201,10 @@ class KudoViewModel(application: Application) : AndroidViewModel(application) {
     fun dismissUndoBanner() {
         undoBannerJob?.cancel()
         viewState.update { it.copy(showUndoBanner = false) }
+    }
+
+    fun toggleTimer(id: Long) {
+        viewModelScope.launch { repository.updateState { state -> KudoReducer.toggleTimer(state, id) } }
     }
 
     fun completeTask(id: Long) {
@@ -472,6 +491,8 @@ data class KudoUiState(
     val currentView: String = KudoViewModel.VIEW_TASKS,
     val taskCreationTarget: TaskCreationTarget = TaskCreationTarget.TASK,
     val storeMode: Int = KudoState.STORE_ONCE,
+    val taskMultiplierMode: Int = 1,
+        val taskMultiplierMode: Int = 1,
     val habitsCollapsed: Boolean = false,
     val isHabitJiggleMode: Boolean = false,
     val isSettingsVisible: Boolean = false,

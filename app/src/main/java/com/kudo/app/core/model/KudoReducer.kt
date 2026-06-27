@@ -5,6 +5,7 @@ import kotlin.math.floor
 object KudoReducer {
 
     fun addTask(
+        taskMultiplier: Int = 1,
         state: KudoState,
         title: String,
         value: Int,
@@ -28,6 +29,7 @@ object KudoReducer {
             id = now,
             title = title,
             valAmount = value,
+            taskMultiplier = taskMultiplier,
             type = type,
             count = 0,
             last = 0L,
@@ -87,30 +89,30 @@ object KudoReducer {
         return state.copy(store = listOf(item) + state.store)
     }
 
-    fun completeTask(state: KudoState, id: Long, now: Long = System.currentTimeMillis()): KudoState {
-        val task = state.tasks.firstOrNull { it.id == id } ?: return state
-        val baseValue = task.remainingValue
-        val reward = floor(baseValue * state.multiplier).toInt()
-        val rewarded = state.copy(coins = state.coins + reward)
-        val grown = processGrowth(rewarded, baseValue)
-        val log = KudoLogEntry(
-            timestamp = now,
-            text = task.title,
-            value = reward,
-            baseValue = baseValue,
-            type = "task",
-            taskId = task.id,
-            itemData = KudoLogItemData.fromTask(task)
-        )
-        val remainingTasks = if (task.type == KudoState.TYPE_TASK) {
-            grown.tasks.filterNot { it.id == id }
-        } else {
-            grown.tasks
-        }
 
-        return grown.copy(
-            tasks = remainingTasks,
-            logs = listOf(log) + grown.logs
+    fun toggleTimer(state: KudoState, id: Long, now: Long = System.currentTimeMillis()): KudoState {
+        val task = state.tasks.firstOrNull { it.id == id } ?: return state
+        if (task.type != KudoState.TYPE_TASK) return state
+
+        return state.copy(
+            tasks = state.tasks.map { t ->
+                if (t.id == id) {
+                    if (t.isTimerRunning) {
+                        val elapsed = now - t.lastTimerStart
+                        t.copy(
+                            isTimerRunning = false,
+                            accumulatedTimeMillis = t.accumulatedTimeMillis + elapsed
+                        )
+                    } else {
+                        t.copy(
+                            isTimerRunning = true,
+                            lastTimerStart = now
+                        )
+                    }
+                } else {
+                    t
+                }
+            }
         )
     }
 
@@ -220,6 +222,7 @@ object KudoReducer {
                     task.copy(
                         title = title.ifBlank { task.title },
                         valAmount = value,
+            taskMultiplier = taskMultiplier,
                         dueAtEpochMillis = dueAtEpochMillis
                     )
                 } else {

@@ -395,6 +395,7 @@ fun HomeScreen(
                             onReorderHabits = viewModel::reorderHabits,
                             onCompleteTask = viewModel::completeTask,
                             onEditTask = viewModel::openEditTask,
+                            onToggleTimer = viewModel::toggleTimer,
                             onCompleteHabit = viewModel::completeHabit,
                             listState = tasksListState
                         )
@@ -750,6 +751,7 @@ private fun PullComposerPage(
     onTitleChange: (String) -> Unit,
     onValueChange: (String) -> Unit,
     onModeToggle: () -> Unit,
+    onMultiplierToggle: () -> Unit,
     onAdd: () -> Boolean,
     onRevealProgressChanged: (Float) -> Unit,
     content: @Composable (Modifier, Boolean, (Boolean) -> Unit) -> Unit
@@ -1017,6 +1019,7 @@ private fun PullComposerPage(
                     currentView = currentView,
                     taskCreationTarget = taskCreationTarget,
                     storeMode = storeMode,
+                    taskMultiplierMode = uiState.taskMultiplierMode,
                     palette = palette,
                     revealProgress = composerRevealProgress,
                     title = title,
@@ -1024,6 +1027,7 @@ private fun PullComposerPage(
                     onTitleChange = onTitleChange,
                     onValueChange = onValueChange,
                     onModeToggle = onModeToggle,
+                    onMultiplierToggle = { viewModel.toggleTaskMultiplier() },
                     onAdd = {
                         val added = onAdd()
                         if (added) {
@@ -1151,6 +1155,7 @@ private fun DashboardCard(
     currentView: String,
     taskCreationTarget: TaskCreationTarget,
     storeMode: Int,
+    taskMultiplierMode: Int,
     palette: KudoPalette,
     revealProgress: Float,
     title: String,
@@ -1158,6 +1163,7 @@ private fun DashboardCard(
     onTitleChange: (String) -> Unit,
     onValueChange: (String) -> Unit,
     onModeToggle: () -> Unit,
+    onMultiplierToggle: () -> Unit,
     onAdd: () -> Boolean
 ) {
     val haptics = rememberKudoHaptics()
@@ -1343,6 +1349,7 @@ private fun TasksPage(
     onReorderHabits: (List<Long>) -> Unit,
     onCompleteTask: (Long) -> Unit,
     onEditTask: (Long) -> Unit,
+    onToggleTimer: (Long) -> Unit,
     onCompleteHabit: (Long) -> Unit,
     listState: LazyListState
 ) {
@@ -1568,6 +1575,10 @@ private fun TasksPage(
                             onEdit = {
                                 onExitHabitJiggle()
                                 onEditTask(task.id)
+                            },
+                            onToggleTimer = {
+                                onExitHabitJiggle()
+                                onToggleTimer(task.id)
                             }
                         )
                     }
@@ -2576,10 +2587,36 @@ private fun TaskRow(
     swipeEnabled: Boolean = true,
     onGestureLockChange: (Boolean) -> Unit = {},
     onComplete: () -> Unit,
-    onEdit: () -> Unit
+    onEdit: () -> Unit,
+    onToggleTimer: () -> Unit
 ) {
     val haptics = rememberKudoHaptics()
-    val reward = (task.remainingValue * finalMultiplier).toInt()
+    var currentNow by remember { mutableStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(task.isTimerRunning) {
+        if (task.isTimerRunning) {
+            while(true) {
+                kotlinx.coroutines.delay(1000)
+                currentNow = System.currentTimeMillis()
+            }
+        }
+    }
+    
+    val totalMillis = task.accumulatedTimeMillis + if (task.isTimerRunning) (currentNow - task.lastTimerStart) else 0L
+    val totalMinutes = kotlin.math.max(1.0, kotlin.math.ceil(totalMillis / 60000.0)).toInt()
+    val baseValue = if (totalMillis == 0L && !task.isTimerRunning && task.valAmount > 0) {
+        task.valAmount
+    } else {
+        totalMinutes * task.taskMultiplier
+    }
+    val reward = (baseValue * finalMultiplier).toInt()
+    
+    val timeFormatted = remember(totalMillis) {
+        val totalSec = totalMillis / 1000
+        val min = totalSec / 60
+        val sec = totalSec % 60
+        String.format("%02d:%02d", min, sec)
+    }
+
     val dueBadge = remember(task.dueAtEpochMillis, palette) {
         task.dueAtEpochMillis?.let { dueBadgeFor(it, palette) }
     }
@@ -2607,7 +2644,7 @@ private fun TaskRow(
         onNegativeReleaseDurationMs = 280,
         onNegativeDismissScale = 0.95f,
         onNegativeRejected = {},
-        onTap = onEdit,
+        onTap = onToggleTimer,
         swipeEnabled = swipeEnabled,
         onGestureLockChange = onGestureLockChange
     ) {
@@ -2627,6 +2664,20 @@ private fun TaskRow(
                     fontWeight = FontWeight.Medium,
                     maxLines = 1
                 )
+                val isTimerRunning = task.isTimerRunning
+                val accumulated = task.accumulatedTimeMillis
+                
+                if (isTimerRunning || accumulated > 0) {
+                    Spacer(modifier = Modifier.height(3.dp))
+                    Text(
+                        text = if (isTimerRunning) "Timer running... (${timeFormatted})" else "Timer paused (${timeFormatted})",
+                        color = if (isTimerRunning) palette.orange else palette.textSub,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Medium,
+                        maxLines = 1
+                    )
+                }
+
                 dueBadge?.let { badge ->
                     Spacer(modifier = Modifier.height(3.dp))
                     Text(
