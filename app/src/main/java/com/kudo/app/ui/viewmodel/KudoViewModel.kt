@@ -38,7 +38,6 @@ class KudoViewModel(application: Application) : AndroidViewModel(application) {
         val currentView: String = VIEW_TASKS,
         val taskCreationTarget: TaskCreationTarget = TaskCreationTarget.TASK,
         val storeMode: Int = KudoState.STORE_ONCE,
-    val taskMultiplierMode: Int = 1,
         val taskMultiplierMode: Int = 1,
         val habitsCollapsed: Boolean = false,
         val habitJiggleMode: Boolean = false,
@@ -156,7 +155,7 @@ class KudoViewModel(application: Application) : AndroidViewModel(application) {
                         taskMultiplier = if (current.taskCreationTarget == TaskCreationTarget.TASK) current.taskMultiplierMode else 1,
                         state = state,
                         title = trimmedTitle,
-                        value = parsedValue,
+                        value = if (current.taskCreationTarget == TaskCreationTarget.TASK) 0 else parsedValue,
                         type = when (current.taskCreationTarget) {
                             TaskCreationTarget.HABIT -> KudoState.TYPE_HABIT
                             TaskCreationTarget.TASK -> KudoState.TYPE_TASK
@@ -345,6 +344,15 @@ class KudoViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch { repository.updateState { state -> KudoReducer.deleteTask(state, id) } }
     }
 
+    fun deleteTaskItems(ids: Set<Long>) {
+        if (ids.isEmpty()) return
+        viewModelScope.launch {
+            repository.updateState { state ->
+                ids.fold(state) { current, id -> KudoReducer.deleteTask(current, id) }
+            }
+        }
+    }
+
     fun setTheme(theme: String) {
         viewModelScope.launch { repository.setTheme(theme) }
     }
@@ -492,7 +500,6 @@ data class KudoUiState(
     val taskCreationTarget: TaskCreationTarget = TaskCreationTarget.TASK,
     val storeMode: Int = KudoState.STORE_ONCE,
     val taskMultiplierMode: Int = 1,
-        val taskMultiplierMode: Int = 1,
     val habitsCollapsed: Boolean = false,
     val isHabitJiggleMode: Boolean = false,
     val isSettingsVisible: Boolean = false,

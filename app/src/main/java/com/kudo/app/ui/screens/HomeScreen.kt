@@ -96,7 +96,6 @@ import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.DarkMode
 import androidx.compose.material.icons.rounded.DeleteOutline
 import androidx.compose.material.icons.rounded.Download
-import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.HelpOutline
 import androidx.compose.material.icons.rounded.KeyboardArrowDown
 import androidx.compose.material.icons.rounded.LightMode
@@ -136,7 +135,6 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalViewConfiguration
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -163,6 +161,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
@@ -349,6 +348,7 @@ fun HomeScreen(
                         currentView = uiState.currentView,
                         taskCreationTarget = uiState.taskCreationTarget,
                         storeMode = uiState.storeMode,
+                        taskMultiplierMode = uiState.taskMultiplierMode,
                         palette = palette,
                         title = taskDraftTitle,
                         value = taskDraftValue,
@@ -364,6 +364,7 @@ fun HomeScreen(
                         },
                         onValueChange = { taskDraftValue = it.filter(Char::isDigit) },
                         onModeToggle = viewModel::cycleTaskCreationTarget,
+                        onMultiplierToggle = viewModel::toggleTaskMultiplier,
                         onAdd = {
                             if (viewModel.addDashboardItem(taskDraftTitle, taskDraftValue)) {
                                 taskDraftTitle = ""
@@ -387,10 +388,10 @@ fun HomeScreen(
                             userScrollEnabled = pageScrollEnabled,
                             onGestureLockChange = onGestureLockChange,
                             onToggleHabits = viewModel::toggleHabitsCollapsed,
-                            onResetTaskSortMode = viewModel::resetTaskSortMode,
                             onExitHabitJiggle = viewModel::exitHabitJiggleMode,
                             onEnterHabitJiggle = viewModel::enterHabitJiggleMode,
                             onDeleteHabit = viewModel::deleteTaskItem,
+                            onDeleteTasks = viewModel::deleteTaskItems,
                             onReorderTask = viewModel::reorderTasks,
                             onReorderHabits = viewModel::reorderHabits,
                             onCompleteTask = viewModel::completeTask,
@@ -405,6 +406,7 @@ fun HomeScreen(
                         currentView = uiState.currentView,
                         taskCreationTarget = uiState.taskCreationTarget,
                         storeMode = uiState.storeMode,
+                        taskMultiplierMode = uiState.taskMultiplierMode,
                         palette = palette,
                         title = storeDraftTitle,
                         value = storeDraftValue,
@@ -412,6 +414,7 @@ fun HomeScreen(
                         onTitleChange = { storeDraftTitle = it },
                         onValueChange = { storeDraftValue = it.filter(Char::isDigit) },
                         onModeToggle = viewModel::toggleStoreMode,
+                        onMultiplierToggle = {},
                         onAdd = {
                             if (viewModel.addDashboardItem(storeDraftTitle, storeDraftValue)) {
                                 storeDraftTitle = ""
@@ -743,6 +746,7 @@ private fun PullComposerPage(
     currentView: String,
     taskCreationTarget: TaskCreationTarget,
     storeMode: Int,
+    taskMultiplierMode: Int,
     palette: KudoPalette,
     title: String,
     value: String,
@@ -1019,7 +1023,7 @@ private fun PullComposerPage(
                     currentView = currentView,
                     taskCreationTarget = taskCreationTarget,
                     storeMode = storeMode,
-                    taskMultiplierMode = uiState.taskMultiplierMode,
+                    taskMultiplierMode = taskMultiplierMode,
                     palette = palette,
                     revealProgress = composerRevealProgress,
                     title = title,
@@ -1027,7 +1031,7 @@ private fun PullComposerPage(
                     onTitleChange = onTitleChange,
                     onValueChange = onValueChange,
                     onModeToggle = onModeToggle,
-                    onMultiplierToggle = { viewModel.toggleTaskMultiplier() },
+                    onMultiplierToggle = onMultiplierToggle,
                     onAdd = {
                         val added = onAdd()
                         if (added) {
@@ -1188,10 +1192,23 @@ private fun DashboardCard(
         taskCreationTarget == TaskCreationTarget.HABIT -> palette.gold
         else -> palette.green
     }
+    val isTaskMultiplierInput = currentView == KudoViewModel.VIEW_TASKS &&
+        taskCreationTarget == TaskCreationTarget.TASK
     val valueColor = when {
         currentView == KudoViewModel.VIEW_STORE -> palette.orange
         value.isBlank() || value == "0" -> palette.textSub
         else -> palette.green
+    }
+    val multiplierMode = taskMultiplierMode.coerceIn(1, 3)
+    val multiplierColor = when (multiplierMode) {
+        1 -> palette.textSub
+        2 -> palette.orange
+        else -> palette.green
+    }
+    val multiplierBackground = when (multiplierMode) {
+        1 -> palette.line.copy(alpha = 0.22f)
+        2 -> palette.orangeBg
+        else -> palette.greenBg
     }
     val addButtonProgress = revealProgress.coerceIn(0f, 1f)
     val addButtonScale = lerpFloat(0.7f, 1f, addButtonProgress)
@@ -1237,27 +1254,53 @@ private fun DashboardCard(
                     .padding(horizontal = 8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Row(
-                    modifier = Modifier.padding(start = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = "${'$'}",
-                        color = palette.textSub,
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                    Spacer(modifier = Modifier.width(2.dp))
-                    DashboardTextField(
-                        value = value,
-                        onValueChange = onValueChange,
-                        modifier = Modifier.width(50.dp),
-                        placeholder = valuePlaceholder,
-                        textColor = valueColor,
-                        placeholderColor = palette.textSub.copy(alpha = 0.4f),
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                        textAlign = TextAlign.Start
-                    )
+                if (isTaskMultiplierInput) {
+                    Box(
+                        modifier = Modifier
+                            .padding(start = 4.dp)
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(multiplierBackground)
+                            .border(1.dp, multiplierColor.copy(alpha = 0.45f), RoundedCornerShape(10.dp))
+                            .clickable(
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = null
+                            ) {
+                                haptics.vibrate(HapticTickMs)
+                                onMultiplierToggle()
+                            }
+                            .padding(horizontal = 14.dp, vertical = 7.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "x$multiplierMode",
+                            color = multiplierColor,
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                } else {
+                    Row(
+                        modifier = Modifier.padding(start = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "${'$'}",
+                            color = palette.textSub,
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Spacer(modifier = Modifier.width(2.dp))
+                        DashboardTextField(
+                            value = value,
+                            onValueChange = onValueChange,
+                            modifier = Modifier.width(50.dp),
+                            placeholder = valuePlaceholder,
+                            textColor = valueColor,
+                            placeholderColor = palette.textSub.copy(alpha = 0.4f),
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            textAlign = TextAlign.Start
+                        )
+                    }
                 }
 
                 Box(
@@ -1341,10 +1384,10 @@ private fun TasksPage(
     userScrollEnabled: Boolean = true,
     onGestureLockChange: (Boolean) -> Unit,
     onToggleHabits: () -> Unit,
-    onResetTaskSortMode: () -> Unit,
     onExitHabitJiggle: () -> Unit,
     onEnterHabitJiggle: () -> Unit,
     onDeleteHabit: (Long) -> Unit,
+    onDeleteTasks: (Set<Long>) -> Unit,
     onReorderTask: (List<Long>) -> Unit,
     onReorderHabits: (List<Long>) -> Unit,
     onCompleteTask: (Long) -> Unit,
@@ -1362,19 +1405,19 @@ private fun TasksPage(
     }
     var localHabits by remember { mutableStateOf(habits) }
     val currentSortMode = taskSortMode
-    val tasks = remember(tasks, currentSortMode) {
+    val taskItems = remember(tasks, currentSortMode) {
         sortTasksForDisplay(
             tasks = tasks.filter { it.type == KudoState.TYPE_TASK },
             sortMode = currentSortMode
         )
     }
 
-    var localTasks by remember { mutableStateOf(tasks) }
+    var localTasks by remember { mutableStateOf(taskItems) }
     var lastTaskSwapHapticAtMs by remember { mutableStateOf(0L) }
     val newTopTaskId = localTasks.lastOrNull()?.id?.takeIf { it == recentTaskInsertId }
 
     val localTaskIds = remember(localTasks) { localTasks.map(KudoTask::id).toSet() }
-    val taskOrderIds = remember(tasks) { tasks.map(KudoTask::id) }
+    val taskOrderIds = remember(taskItems) { taskItems.map(KudoTask::id) }
     val localTaskOrderIds = remember(localTasks) { localTasks.map(KudoTask::id) }
     val latestLocalTasks by rememberUpdatedState(localTasks)
     val latestLocalTaskIds by rememberUpdatedState(localTaskIds)
@@ -1382,6 +1425,8 @@ private fun TasksPage(
     val latestLocalTaskOrderIds by rememberUpdatedState(localTaskOrderIds)
     val latestOnReorderTask by rememberUpdatedState(onReorderTask)
     var pendingDeleteHabitId by remember { mutableStateOf<Long?>(null) }
+    var isTaskEditMode by remember { mutableStateOf(false) }
+    var selectedTaskIds by remember { mutableStateOf(emptySet<Long>()) }
     val dragCancelledAnimation = remember {
         SpringDragCancelledAnimation(stiffness = ReorderCancelAnimationStiffness)
     }
@@ -1434,9 +1479,14 @@ private fun TasksPage(
             localHabits = habits
         }
     }
-    LaunchedEffect(tasks) {
+    LaunchedEffect(taskItems) {
         if (!isTaskReordering) {
-            localTasks = tasks
+            localTasks = taskItems
+        }
+        val currentTaskIds = taskItems.map(KudoTask::id).toSet()
+        selectedTaskIds = selectedTaskIds.intersect(currentTaskIds)
+        if (taskItems.isEmpty()) {
+            isTaskEditMode = false
         }
     }
 
@@ -1513,16 +1563,28 @@ private fun TasksPage(
 
         item(key = "tasks_header") {
             TaskQueueHeader(
-                sortMode = taskSortMode,
+                isTaskEditMode = isTaskEditMode,
+                selectedCount = selectedTaskIds.size,
                 palette = palette,
-                onLongPress = {
+                onToggleEditMode = {
                     onExitHabitJiggle()
-                    onResetTaskSortMode()
+                    if (isTaskEditMode) {
+                        isTaskEditMode = false
+                        selectedTaskIds = emptySet()
+                    } else {
+                        isTaskEditMode = true
+                        selectedTaskIds = emptySet()
+                    }
+                },
+                onDeleteSelectedTasks = {
+                    onDeleteTasks(selectedTaskIds)
+                    selectedTaskIds = emptySet()
+                    isTaskEditMode = false
                 }
             )
         }
 
-        if (tasks.isEmpty()) {
+        if (taskItems.isEmpty()) {
             item(key = "empty_tasks") {
                 Box(
                     modifier = Modifier
@@ -1566,19 +1628,28 @@ private fun TasksPage(
                                     haptics = haptics
                                 )
                                 .detectReorderAfterLongPress(state),
-                            swipeEnabled = !isDragging && !isTaskLongPressGestureLocked,
+                            swipeEnabled = !isTaskEditMode && !isDragging && !isTaskLongPressGestureLocked,
+                            isEditMode = isTaskEditMode,
+                            isSelectedForDelete = task.id in selectedTaskIds,
                             onGestureLockChange = { isTaskSwipeGestureLocked = it },
                             onComplete = {
                                 onExitHabitJiggle()
                                 onCompleteTask(task.id)
                             },
-                            onEdit = {
-                                onExitHabitJiggle()
-                                onEditTask(task.id)
+                            onToggleDeleteSelection = {
+                                selectedTaskIds = if (task.id in selectedTaskIds) {
+                                    selectedTaskIds - task.id
+                                } else {
+                                    selectedTaskIds + task.id
+                                }
                             },
-                            onToggleTimer = {
+                            onTap = {
                                 onExitHabitJiggle()
-                                onToggleTimer(task.id)
+                                if (isTaskEditMode) {
+                                    onEditTask(task.id)
+                                } else {
+                                    onToggleTimer(task.id)
+                                }
                             }
                         )
                     }
@@ -2240,56 +2311,18 @@ private fun SectionHeader(
 
 @Composable
 private fun TaskQueueHeader(
-    sortMode: Int,
+    isTaskEditMode: Boolean,
+    selectedCount: Int,
     palette: KudoPalette,
-    onLongPress: () -> Unit
+    onToggleEditMode: () -> Unit,
+    onDeleteSelectedTasks: () -> Unit
 ) {
-    val scope = rememberCoroutineScope()
     val haptics = rememberKudoHaptics()
-    val viewConfiguration = LocalViewConfiguration.current
-    val holdProgress = remember { Animatable(0f) }
-    var longPressTriggered by remember { mutableStateOf(false) }
 
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 20.dp, vertical = 10.dp)
-            .pointerInput(sortMode) {
-                detectTapGestures(
-                    onPress = {
-                        longPressTriggered = false
-                        val holdJob = scope.launch {
-                            holdProgress.snapTo(0f)
-                            holdProgress.animateTo(
-                                targetValue = 1f,
-                                animationSpec = tween(
-                                    durationMillis = viewConfiguration.longPressTimeoutMillis.toInt(),
-                                    easing = LinearEasing
-                                )
-                            )
-                        }
-                        try {
-                            tryAwaitRelease()
-                        } finally {
-                            holdJob.cancel()
-                            if (!longPressTriggered) {
-                                scope.launch {
-                                    holdProgress.animateTo(
-                                        targetValue = 0f,
-                                        animationSpec = tween(durationMillis = 110)
-                                    )
-                                }
-                            }
-                        }
-                    },
-                    onLongPress = {
-                        longPressTriggered = true
-                        haptics.vibrate(HapticTickMs)
-                        scope.launch { holdProgress.snapTo(0f) }
-                        onLongPress()
-                    }
-                )
-            },
+            .padding(horizontal = 20.dp, vertical = 10.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -2300,19 +2333,37 @@ private fun TaskQueueHeader(
             fontWeight = FontWeight.Bold,
             letterSpacing = 1.sp
         )
-        if (sortMode == KudoState.TASK_SORT_AUTO_DUE) {
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            if (isTaskEditMode && selectedCount > 0) {
+                Text(
+                    text = "delete $selectedCount",
+                    color = palette.orange,
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null
+                    ) {
+                        haptics.vibrate(HapticTickMs)
+                        onDeleteSelectedTasks()
+                    }
+                )
+            }
             Text(
-                text = "by date",
-                color = palette.textSub.copy(alpha = 0.5f),
+                text = if (isTaskEditMode) "done" else "edit",
+                color = palette.textSub.copy(alpha = 0.72f),
                 fontSize = 10.sp,
-                fontWeight = FontWeight.Medium
-            )
-        } else {
-            Text(
-                text = "hold to reset",
-                color = palette.textSub.copy(alpha = if (holdProgress.value > 0.1f) holdProgress.value else 0.3f),
-                fontSize = 10.sp,
-                fontWeight = FontWeight.Medium
+                fontWeight = FontWeight.Medium,
+                modifier = Modifier.clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null
+                ) {
+                    haptics.vibrate(HapticTickMs)
+                    onToggleEditMode()
+                }
             )
         }
     }
@@ -2585,31 +2636,35 @@ private fun TaskRow(
     modifier: Modifier = Modifier,
     reorderModifier: Modifier = Modifier,
     swipeEnabled: Boolean = true,
+    isEditMode: Boolean = false,
+    isSelectedForDelete: Boolean = false,
     onGestureLockChange: (Boolean) -> Unit = {},
     onComplete: () -> Unit,
-    onEdit: () -> Unit,
-    onToggleTimer: () -> Unit
+    onToggleDeleteSelection: () -> Unit,
+    onTap: () -> Unit
 ) {
     val haptics = rememberKudoHaptics()
     var currentNow by remember { mutableStateOf(System.currentTimeMillis()) }
     LaunchedEffect(task.isTimerRunning) {
         if (task.isTimerRunning) {
-            while(true) {
+            while (true) {
                 kotlinx.coroutines.delay(1000)
                 currentNow = System.currentTimeMillis()
             }
         }
     }
-    
-    val totalMillis = task.accumulatedTimeMillis + if (task.isTimerRunning) (currentNow - task.lastTimerStart) else 0L
-    val totalMinutes = kotlin.math.max(1.0, kotlin.math.ceil(totalMillis / 60000.0)).toInt()
-    val baseValue = if (totalMillis == 0L && !task.isTimerRunning && task.valAmount > 0) {
-        task.valAmount
+
+    val runningElapsed = if (task.isTimerRunning) {
+        (currentNow - task.lastTimerStart).coerceAtLeast(0L)
     } else {
-        totalMinutes * task.taskMultiplier
+        0L
     }
+    val totalMillis = (task.accumulatedTimeMillis + runningElapsed).coerceAtLeast(0L)
+    val totalMinutes = (totalMillis / 60_000L).toInt()
+    val timerMultiplier = task.taskMultiplier.coerceIn(1, 3)
+    val baseValue = totalMinutes * timerMultiplier
     val reward = (baseValue * finalMultiplier).toInt()
-    
+
     val timeFormatted = remember(totalMillis) {
         val totalSec = totalMillis / 1000
         val min = totalSec / 60
@@ -2620,7 +2675,28 @@ private fun TaskRow(
     val dueBadge = remember(task.dueAtEpochMillis, palette) {
         task.dueAtEpochMillis?.let { dueBadgeFor(it, palette) }
     }
-    val activeBorderColor = if (isActive) palette.green.copy(alpha = 0.5f) else palette.line
+    val dueText = dueBadge?.text ?: " "
+    val dueColor = dueBadge?.color ?: palette.textSub.copy(alpha = 0f)
+    val timerTextColor = when {
+        task.isTimerRunning -> palette.orange
+        totalMillis > 0L -> palette.green
+        else -> palette.textSub.copy(alpha = 0.58f)
+    }
+    val rewardText = if (reward > 0) "+${'$'}" + reward else " "
+    val rewardTextColor = if (reward > 0) palette.green else Color.Transparent
+    val rowShape = RoundedCornerShape(14.dp)
+    val timerBorderColor = when {
+        task.isTimerRunning -> palette.orange.copy(alpha = 0.72f)
+        task.accumulatedTimeMillis > 0L -> palette.green.copy(alpha = 0.45f)
+        isActive -> palette.green.copy(alpha = 0.5f)
+        else -> palette.line
+    }
+    val rowBackgroundColor = when {
+        task.isTimerRunning -> palette.orangeBg.copy(alpha = 0.22f)
+        task.accumulatedTimeMillis > 0L -> palette.greenBg.copy(alpha = 0.12f)
+        isActive -> palette.greenBg.copy(alpha = 0.18f)
+        else -> Color.Transparent
+    }
     SwipeActionCard(
         modifier = modifier,
         reorderModifier = reorderModifier,
@@ -2636,70 +2712,100 @@ private fun TaskRow(
             icon = Icons.Rounded.Check,
             alignStart = false
         ),
-        onPositiveAllowed = { true },
-        onNegativeAllowed = { true },
+        onPositiveAllowed = { !isEditMode },
+        onNegativeAllowed = { !isEditMode },
         onPositiveCommit = onComplete,
         onNegativeCommit = onComplete,
         onPositiveCommitHaptic = haptics::vibrateDoubleTick,
         onNegativeReleaseDurationMs = 280,
         onNegativeDismissScale = 0.95f,
         onNegativeRejected = {},
-        onTap = onToggleTimer,
-        swipeEnabled = swipeEnabled,
+        onTap = onTap,
+        swipeEnabled = swipeEnabled && !isEditMode,
         onGestureLockChange = onGestureLockChange
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .border(1.dp, activeBorderColor, RoundedCornerShape(14.dp))
-                .then(if (isActive) Modifier.background(palette.greenBg.copy(alpha = 0.18f), RoundedCornerShape(14.dp)) else Modifier)
-                .padding(horizontal = 16.dp, vertical = 14.dp),
+                .height(62.dp)
+                .background(rowBackgroundColor, rowShape)
+                .border(1.dp, timerBorderColor, rowShape)
+                .padding(horizontal = 14.dp, vertical = 9.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Column(modifier = Modifier.weight(1f)) {
+            if (isEditMode) {
+                val selectionColor = if (isSelectedForDelete) palette.orange else palette.line
+                Box(
+                    modifier = Modifier
+                        .size(22.dp)
+                        .clip(CircleShape)
+                        .background(if (isSelectedForDelete) palette.orange else Color.Transparent)
+                        .border(1.dp, selectionColor, CircleShape)
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null
+                        ) {
+                            haptics.vibrate(HapticTickMs)
+                            onToggleDeleteSelection()
+                        },
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (isSelectedForDelete) {
+                        Icon(
+                            imageVector = Icons.Rounded.Check,
+                            contentDescription = "Selected for deletion",
+                            tint = palette.background,
+                            modifier = Modifier.size(14.dp)
+                        )
+                    }
+                }
+                Spacer(modifier = Modifier.width(10.dp))
+            }
+
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.Center
+            ) {
                 Text(
                     text = task.title,
                     color = palette.textMain,
-                    fontSize = 15.sp,
+                    fontSize = 14.sp,
                     fontWeight = FontWeight.Medium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    text = dueText,
+                    color = dueColor,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Medium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            Spacer(modifier = Modifier.width(10.dp))
+            Column(
+                modifier = Modifier.widthIn(min = 48.dp),
+                horizontalAlignment = Alignment.End,
+                verticalArrangement = Arrangement.Center
+            ) {
+                Text(
+                    text = timeFormatted,
+                    color = timerTextColor,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    textAlign = TextAlign.End,
                     maxLines = 1
                 )
-                val isTimerRunning = task.isTimerRunning
-                val accumulated = task.accumulatedTimeMillis
-                
-                if (isTimerRunning || accumulated > 0) {
-                    Spacer(modifier = Modifier.height(3.dp))
-                    Text(
-                        text = if (isTimerRunning) "Timer running... (${timeFormatted})" else "Timer paused (${timeFormatted})",
-                        color = if (isTimerRunning) palette.orange else palette.textSub,
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Medium,
-                        maxLines = 1
-                    )
-                }
-
-                dueBadge?.let { badge ->
-                    Spacer(modifier = Modifier.height(3.dp))
-                    Text(
-                        text = badge.text,
-                        color = badge.color,
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Medium,
-                        maxLines = 1
-                    )
-                }
+                Text(
+                    text = rewardText,
+                    color = rewardTextColor,
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold,
+                    textAlign = TextAlign.End,
+                    maxLines = 1
+                )
             }
-            Spacer(modifier = Modifier.width(14.dp))
-            Text(
-                text = "+${'$'}" + reward,
-                color = palette.green,
-                fontSize = 13.sp,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(palette.greenBg)
-                    .padding(horizontal = 10.dp, vertical = 6.dp)
-            )
         }
     }
 }

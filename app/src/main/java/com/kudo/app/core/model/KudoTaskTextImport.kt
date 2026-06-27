@@ -31,7 +31,7 @@ object KudoTaskTextImport {
         val title = match?.groupValues?.get(1)?.trim() ?: cleaned
         if (title.isBlank()) return null
 
-        val value = match?.groupValues?.get(2)?.toIntOrNull() ?: 1
+        val value = match?.groupValues?.get(2)?.toIntOrNull() ?: 0
         return KudoTaskImportDraft(
             title = title,
             value = value

@@ -98,10 +98,11 @@ object KudoReducer {
             tasks = state.tasks.map { t ->
                 if (t.id == id) {
                     if (t.isTimerRunning) {
-                        val elapsed = now - t.lastTimerStart
+                        val elapsed = (now - t.lastTimerStart).coerceAtLeast(0L)
                         t.copy(
                             isTimerRunning = false,
-                            accumulatedTimeMillis = t.accumulatedTimeMillis + elapsed
+                            accumulatedTimeMillis = t.accumulatedTimeMillis + elapsed,
+                            lastTimerStart = 0L
                         )
                     } else {
                         t.copy(
@@ -116,8 +117,47 @@ object KudoReducer {
         )
     }
 
+    fun completeTask(state: KudoState, id: Long, now: Long = System.currentTimeMillis()): KudoState {
+        val task = state.tasks.firstOrNull { it.id == id } ?: return state
+        if (task.type != KudoState.TYPE_TASK) return state
+
+        val runningElapsed = if (task.isTimerRunning) {
+            (now - task.lastTimerStart).coerceAtLeast(0L)
+        } else {
+            0L
+        }
+        val totalMillis = (task.accumulatedTimeMillis + runningElapsed).coerceAtLeast(0L)
+        val totalMinutes = (totalMillis / 60_000L).toInt()
+        val taskMultiplier = task.taskMultiplier.coerceIn(1, 3)
+        val baseValue = totalMinutes * taskMultiplier
+        val reward = floor(baseValue * state.multiplier).toInt()
+        val rewarded = state.copy(coins = state.coins + reward)
+        val grown = processGrowth(rewarded, baseValue)
+        val completedSnapshot = task.copy(
+            isTimerRunning = false,
+            accumulatedTimeMillis = totalMillis,
+            lastTimerStart = 0L
+        )
+        val log = KudoLogEntry(
+            timestamp = now,
+            text = task.title,
+            value = reward,
+            baseValue = baseValue,
+            type = "task",
+            taskId = task.id,
+            isHabit = false,
+            itemData = KudoLogItemData.fromTask(completedSnapshot)
+        )
+
+        return grown.copy(
+            tasks = grown.tasks.filterNot { it.id == id },
+            logs = listOf(log) + grown.logs
+        )
+    }
+
     fun completeHabit(state: KudoState, id: Long, now: Long = System.currentTimeMillis()): KudoState {
         val habit = state.tasks.firstOrNull { it.id == id } ?: return state
+        if (habit.type != KudoState.TYPE_HABIT) return state
         val reward = floor(habit.valAmount * state.multiplier).toInt()
         val rewarded = state.copy(coins = state.coins + reward)
         val grown = processGrowth(rewarded, habit.valAmount)
@@ -222,7 +262,6 @@ object KudoReducer {
                     task.copy(
                         title = title.ifBlank { task.title },
                         valAmount = value,
-            taskMultiplier = taskMultiplier,
                         dueAtEpochMillis = dueAtEpochMillis
                     )
                 } else {
