@@ -38,7 +38,6 @@ class KudoViewModel(application: Application) : AndroidViewModel(application) {
         val currentView: String = VIEW_TASKS,
         val taskCreationTarget: TaskCreationTarget = TaskCreationTarget.TASK,
         val storeMode: Int = KudoState.STORE_ONCE,
-        val taskMultiplierMode: Int = 1,
         val habitsCollapsed: Boolean = false,
         val habitJiggleMode: Boolean = false,
         val settingsVisible: Boolean = false,
@@ -48,7 +47,8 @@ class KudoViewModel(application: Application) : AndroidViewModel(application) {
         val recentStoreInsertId: Long? = null,
         val showUndoBanner: Boolean = false,
         val isImportPreviewVisible: Boolean = false,
-        val importPreviewDrafts: List<KudoTaskImportDraft> = emptyList()
+        val importPreviewDrafts: List<KudoTaskImportDraft> = emptyList(),
+        val taskMultiplierMode: Int = 1  // For backward compatibility only
     )
     private val viewState = MutableStateFlow(KudoViewState())
 
@@ -63,7 +63,6 @@ class KudoViewModel(application: Application) : AndroidViewModel(application) {
             currentView = view.currentView,
             taskCreationTarget = view.taskCreationTarget,
             storeMode = view.storeMode,
-            taskMultiplierMode = view.taskMultiplierMode,
             habitsCollapsed = view.habitsCollapsed,
             isHabitJiggleMode = view.habitJiggleMode,
             isSettingsVisible = view.settingsVisible,
@@ -73,7 +72,8 @@ class KudoViewModel(application: Application) : AndroidViewModel(application) {
             recentStoreInsertId = view.recentStoreInsertId,
             showUndoBanner = view.showUndoBanner,
             isImportPreviewVisible = view.isImportPreviewVisible,
-            importPreviewDrafts = view.importPreviewDrafts
+            importPreviewDrafts = view.importPreviewDrafts,
+            taskMultiplierMode = view.taskMultiplierMode
         )
     }.stateIn(
         scope = viewModelScope,
@@ -98,17 +98,6 @@ class KudoViewModel(application: Application) : AndroidViewModel(application) {
                     TaskCreationTarget.HABIT -> TaskCreationTarget.TASK
                 }
             )
-        }
-    }
-
-    fun toggleTaskMultiplier() {
-        viewState.update { 
-            val next = when (it.taskMultiplierMode) {
-                1 -> 2
-                2 -> 3
-                else -> 1
-            }
-            it.copy(taskMultiplierMode = next)
         }
     }
 
@@ -152,10 +141,9 @@ class KudoViewModel(application: Application) : AndroidViewModel(application) {
                     )
                 } else {
                     KudoReducer.addTask(
-                        taskMultiplier = if (current.taskCreationTarget == TaskCreationTarget.TASK) current.taskMultiplierMode else 1,
                         state = state,
                         title = trimmedTitle,
-                        value = if (current.taskCreationTarget == TaskCreationTarget.TASK) 0 else parsedValue,
+                        value = parsedValue,
                         type = when (current.taskCreationTarget) {
                             TaskCreationTarget.HABIT -> KudoState.TYPE_HABIT
                             TaskCreationTarget.TASK -> KudoState.TYPE_TASK
@@ -399,8 +387,9 @@ class KudoViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private fun parseDashboardValue(raw: String): Int {
+        // Return 0 if blank (meaning use timer as value source)
         if (raw.isBlank()) {
-            return 1
+            return 0
         }
         return parseEditValue(raw)
     }
@@ -499,7 +488,6 @@ data class KudoUiState(
     val currentView: String = KudoViewModel.VIEW_TASKS,
     val taskCreationTarget: TaskCreationTarget = TaskCreationTarget.TASK,
     val storeMode: Int = KudoState.STORE_ONCE,
-    val taskMultiplierMode: Int = 1,
     val habitsCollapsed: Boolean = false,
     val isHabitJiggleMode: Boolean = false,
     val isSettingsVisible: Boolean = false,
@@ -509,7 +497,8 @@ data class KudoUiState(
     val recentStoreInsertId: Long? = null,
     val showUndoBanner: Boolean = false,
     val isImportPreviewVisible: Boolean = false,
-    val importPreviewDrafts: List<KudoTaskImportDraft> = emptyList()
+    val importPreviewDrafts: List<KudoTaskImportDraft> = emptyList(),
+    val taskMultiplierMode: Int = 1  // For backward compatibility only
 )
 
 @Immutable

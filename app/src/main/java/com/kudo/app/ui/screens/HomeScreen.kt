@@ -348,7 +348,6 @@ fun HomeScreen(
                         currentView = uiState.currentView,
                         taskCreationTarget = uiState.taskCreationTarget,
                         storeMode = uiState.storeMode,
-                        taskMultiplierMode = uiState.taskMultiplierMode,
                         palette = palette,
                         title = taskDraftTitle,
                         value = taskDraftValue,
@@ -364,7 +363,6 @@ fun HomeScreen(
                         },
                         onValueChange = { taskDraftValue = it.filter(Char::isDigit) },
                         onModeToggle = viewModel::cycleTaskCreationTarget,
-                        onMultiplierToggle = viewModel::toggleTaskMultiplier,
                         onAdd = {
                             if (viewModel.addDashboardItem(taskDraftTitle, taskDraftValue)) {
                                 taskDraftTitle = ""
@@ -406,7 +404,6 @@ fun HomeScreen(
                         currentView = uiState.currentView,
                         taskCreationTarget = uiState.taskCreationTarget,
                         storeMode = uiState.storeMode,
-                        taskMultiplierMode = uiState.taskMultiplierMode,
                         palette = palette,
                         title = storeDraftTitle,
                         value = storeDraftValue,
@@ -414,7 +411,6 @@ fun HomeScreen(
                         onTitleChange = { storeDraftTitle = it },
                         onValueChange = { storeDraftValue = it.filter(Char::isDigit) },
                         onModeToggle = viewModel::toggleStoreMode,
-                        onMultiplierToggle = {},
                         onAdd = {
                             if (viewModel.addDashboardItem(storeDraftTitle, storeDraftValue)) {
                                 storeDraftTitle = ""
@@ -746,7 +742,6 @@ private fun PullComposerPage(
     currentView: String,
     taskCreationTarget: TaskCreationTarget,
     storeMode: Int,
-    taskMultiplierMode: Int,
     palette: KudoPalette,
     title: String,
     value: String,
@@ -755,7 +750,6 @@ private fun PullComposerPage(
     onTitleChange: (String) -> Unit,
     onValueChange: (String) -> Unit,
     onModeToggle: () -> Unit,
-    onMultiplierToggle: () -> Unit,
     onAdd: () -> Boolean,
     onRevealProgressChanged: (Float) -> Unit,
     content: @Composable (Modifier, Boolean, (Boolean) -> Unit) -> Unit
@@ -1023,7 +1017,6 @@ private fun PullComposerPage(
                     currentView = currentView,
                     taskCreationTarget = taskCreationTarget,
                     storeMode = storeMode,
-                    taskMultiplierMode = taskMultiplierMode,
                     palette = palette,
                     revealProgress = composerRevealProgress,
                     title = title,
@@ -1031,7 +1024,6 @@ private fun PullComposerPage(
                     onTitleChange = onTitleChange,
                     onValueChange = onValueChange,
                     onModeToggle = onModeToggle,
-                    onMultiplierToggle = onMultiplierToggle,
                     onAdd = {
                         val added = onAdd()
                         if (added) {
@@ -1159,7 +1151,6 @@ private fun DashboardCard(
     currentView: String,
     taskCreationTarget: TaskCreationTarget,
     storeMode: Int,
-    taskMultiplierMode: Int,
     palette: KudoPalette,
     revealProgress: Float,
     title: String,
@@ -1167,7 +1158,6 @@ private fun DashboardCard(
     onTitleChange: (String) -> Unit,
     onValueChange: (String) -> Unit,
     onModeToggle: () -> Unit,
-    onMultiplierToggle: () -> Unit,
     onAdd: () -> Boolean
 ) {
     val haptics = rememberKudoHaptics()
@@ -1178,8 +1168,7 @@ private fun DashboardCard(
     }
     val valuePlaceholder = when {
         currentView == KudoViewModel.VIEW_STORE -> "0"
-        taskCreationTarget == TaskCreationTarget.HABIT -> "10"
-        else -> "" // Suggests it is completely optional
+        else -> "" // Optional - empty means use timer
     }
     val modeText = when {
         currentView == KudoViewModel.VIEW_STORE && storeMode == KudoState.STORE_INFINITE -> "INFIN"
@@ -1192,27 +1181,15 @@ private fun DashboardCard(
         taskCreationTarget == TaskCreationTarget.HABIT -> palette.gold
         else -> palette.green
     }
-    val isTaskMultiplierInput = currentView == KudoViewModel.VIEW_TASKS &&
-        taskCreationTarget == TaskCreationTarget.TASK
     val valueColor = when {
         currentView == KudoViewModel.VIEW_STORE -> palette.orange
         value.isBlank() || value == "0" -> palette.textSub
         else -> palette.green
     }
-    val multiplierMode = taskMultiplierMode.coerceIn(1, 3)
-    val multiplierColor = when (multiplierMode) {
-        1 -> palette.textSub
-        2 -> palette.orange
-        else -> palette.green
-    }
-    val multiplierBackground = when (multiplierMode) {
-        1 -> palette.line.copy(alpha = 0.22f)
-        2 -> palette.orangeBg
-        else -> palette.greenBg
-    }
     val addButtonProgress = revealProgress.coerceIn(0f, 1f)
     val addButtonScale = lerpFloat(0.7f, 1f, addButtonProgress)
     val addButtonAlpha = lerpFloat(0.56f, 1f, addButtonProgress)
+    val showValueInput = currentView != KudoViewModel.VIEW_STORE && taskCreationTarget != TaskCreationTarget.HABIT
     val interactionSource = remember { MutableInteractionSource() }
 
     Card(
@@ -1254,31 +1231,8 @@ private fun DashboardCard(
                     .padding(horizontal = 8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                if (isTaskMultiplierInput) {
-                    Box(
-                        modifier = Modifier
-                            .padding(start = 4.dp)
-                            .clip(RoundedCornerShape(10.dp))
-                            .background(multiplierBackground)
-                            .border(1.dp, multiplierColor.copy(alpha = 0.45f), RoundedCornerShape(10.dp))
-                            .clickable(
-                                interactionSource = remember { MutableInteractionSource() },
-                                indication = null
-                            ) {
-                                haptics.vibrate(HapticTickMs)
-                                onMultiplierToggle()
-                            }
-                            .padding(horizontal = 14.dp, vertical = 7.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = "x$multiplierMode",
-                            color = multiplierColor,
-                            fontSize = 14.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
-                } else {
+                // Always show value input for tasks (Store uses "0", Habits have their fixed value)
+                if (showValueInput) {
                     Row(
                         modifier = Modifier.padding(start = 8.dp),
                         verticalAlignment = Alignment.CenterVertically
@@ -1300,6 +1254,32 @@ private fun DashboardCard(
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                             textAlign = TextAlign.Start
                         )
+                    }
+                } else {
+                    // Store and Habits use fixed cost/val display, show $ indicator
+                    if (currentView == KudoViewModel.VIEW_STORE || taskCreationTarget == TaskCreationTarget.HABIT) {
+                        Row(
+                            modifier = Modifier.padding(start = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "${'$'}",
+                                color = palette.textSub,
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            Spacer(modifier = Modifier.width(2.dp))
+                            DashboardTextField(
+                                value = value,
+                                onValueChange = onValueChange,
+                                modifier = Modifier.width(50.dp),
+                                placeholder = valuePlaceholder,
+                                textColor = valueColor,
+                                placeholderColor = palette.textSub.copy(alpha = 0.4f),
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                textAlign = TextAlign.Start
+                            )
+                        }
                     }
                 }
 
@@ -1425,8 +1405,6 @@ private fun TasksPage(
     val latestLocalTaskOrderIds by rememberUpdatedState(localTaskOrderIds)
     val latestOnReorderTask by rememberUpdatedState(onReorderTask)
     var pendingDeleteHabitId by remember { mutableStateOf<Long?>(null) }
-    var isTaskEditMode by remember { mutableStateOf(false) }
-    var selectedTaskIds by remember { mutableStateOf(emptySet<Long>()) }
     val dragCancelledAnimation = remember {
         SpringDragCancelledAnimation(stiffness = ReorderCancelAnimationStiffness)
     }
@@ -1482,11 +1460,6 @@ private fun TasksPage(
     LaunchedEffect(taskItems) {
         if (!isTaskReordering) {
             localTasks = taskItems
-        }
-        val currentTaskIds = taskItems.map(KudoTask::id).toSet()
-        selectedTaskIds = selectedTaskIds.intersect(currentTaskIds)
-        if (taskItems.isEmpty()) {
-            isTaskEditMode = false
         }
     }
 
@@ -1562,25 +1535,9 @@ private fun TasksPage(
         }
 
         item(key = "tasks_header") {
-            TaskQueueHeader(
-                isTaskEditMode = isTaskEditMode,
-                selectedCount = selectedTaskIds.size,
-                palette = palette,
-                onToggleEditMode = {
-                    onExitHabitJiggle()
-                    if (isTaskEditMode) {
-                        isTaskEditMode = false
-                        selectedTaskIds = emptySet()
-                    } else {
-                        isTaskEditMode = true
-                        selectedTaskIds = emptySet()
-                    }
-                },
-                onDeleteSelectedTasks = {
-                    onDeleteTasks(selectedTaskIds)
-                    selectedTaskIds = emptySet()
-                    isTaskEditMode = false
-                }
+            SectionHeader(
+                title = "TASKS",
+                palette = palette
             )
         }
 
@@ -1628,28 +1585,18 @@ private fun TasksPage(
                                     haptics = haptics
                                 )
                                 .detectReorderAfterLongPress(state),
-                            swipeEnabled = !isTaskEditMode && !isDragging && !isTaskLongPressGestureLocked,
-                            isEditMode = isTaskEditMode,
-                            isSelectedForDelete = task.id in selectedTaskIds,
+                            swipeEnabled = !isDragging && !isTaskLongPressGestureLocked,
                             onGestureLockChange = { isTaskSwipeGestureLocked = it },
                             onComplete = {
                                 onExitHabitJiggle()
                                 onCompleteTask(task.id)
                             },
-                            onToggleDeleteSelection = {
-                                selectedTaskIds = if (task.id in selectedTaskIds) {
-                                    selectedTaskIds - task.id
-                                } else {
-                                    selectedTaskIds + task.id
-                                }
-                            },
-                            onTap = {
+                            onEdit = {
                                 onExitHabitJiggle()
-                                if (isTaskEditMode) {
-                                    onEditTask(task.id)
-                                } else {
-                                    onToggleTimer(task.id)
-                                }
+                                onEditTask(task.id)
+                            },
+                            onToggleTimer = {
+                                onToggleTimer(task.id)
                             }
                         )
                     }
@@ -2309,66 +2256,6 @@ private fun SectionHeader(
     }
 }
 
-@Composable
-private fun TaskQueueHeader(
-    isTaskEditMode: Boolean,
-    selectedCount: Int,
-    palette: KudoPalette,
-    onToggleEditMode: () -> Unit,
-    onDeleteSelectedTasks: () -> Unit
-) {
-    val haptics = rememberKudoHaptics()
-
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 20.dp, vertical = 10.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Text(
-            text = "TASKS",
-            color = palette.textSub,
-            fontSize = 11.sp,
-            fontWeight = FontWeight.Bold,
-            letterSpacing = 1.sp
-        )
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            if (isTaskEditMode && selectedCount > 0) {
-                Text(
-                    text = "delete $selectedCount",
-                    color = palette.orange,
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    modifier = Modifier.clickable(
-                        interactionSource = remember { MutableInteractionSource() },
-                        indication = null
-                    ) {
-                        haptics.vibrate(HapticTickMs)
-                        onDeleteSelectedTasks()
-                    }
-                )
-            }
-            Text(
-                text = if (isTaskEditMode) "done" else "edit",
-                color = palette.textSub.copy(alpha = 0.72f),
-                fontSize = 10.sp,
-                fontWeight = FontWeight.Medium,
-                modifier = Modifier.clickable(
-                    interactionSource = remember { MutableInteractionSource() },
-                    indication = null
-                ) {
-                    haptics.vibrate(HapticTickMs)
-                    onToggleEditMode()
-                }
-            )
-        }
-    }
-}
-
 
 private val HabitChargePattern = listOf(
     0L to 2L,
@@ -2636,12 +2523,10 @@ private fun TaskRow(
     modifier: Modifier = Modifier,
     reorderModifier: Modifier = Modifier,
     swipeEnabled: Boolean = true,
-    isEditMode: Boolean = false,
-    isSelectedForDelete: Boolean = false,
     onGestureLockChange: (Boolean) -> Unit = {},
     onComplete: () -> Unit,
-    onToggleDeleteSelection: () -> Unit,
-    onTap: () -> Unit
+    onEdit: () -> Unit,
+    onToggleTimer: () -> Unit
 ) {
     val haptics = rememberKudoHaptics()
     var currentNow by remember { mutableStateOf(System.currentTimeMillis()) }
@@ -2661,8 +2546,9 @@ private fun TaskRow(
     }
     val totalMillis = (task.accumulatedTimeMillis + runningElapsed).coerceAtLeast(0L)
     val totalMinutes = (totalMillis / 60_000L).toInt()
-    val timerMultiplier = task.taskMultiplier.coerceIn(1, 3)
-    val baseValue = totalMinutes * timerMultiplier
+    val timeBasedValue = totalMinutes  // 1 coin per minute
+    val hasManualValue = task.valAmount > 0
+    val baseValue = if (hasManualValue) task.valAmount else timeBasedValue
     val reward = (baseValue * finalMultiplier).toInt()
 
     val timeFormatted = remember(totalMillis) {
@@ -2682,21 +2568,10 @@ private fun TaskRow(
         totalMillis > 0L -> palette.green
         else -> palette.textSub.copy(alpha = 0.58f)
     }
-    val rewardText = if (reward > 0) "+${'$'}" + reward else " "
-    val rewardTextColor = if (reward > 0) palette.green else Color.Transparent
     val rowShape = RoundedCornerShape(14.dp)
-    val timerBorderColor = when {
-        task.isTimerRunning -> palette.orange.copy(alpha = 0.72f)
-        task.accumulatedTimeMillis > 0L -> palette.green.copy(alpha = 0.45f)
-        isActive -> palette.green.copy(alpha = 0.5f)
-        else -> palette.line
-    }
-    val rowBackgroundColor = when {
-        task.isTimerRunning -> palette.orangeBg.copy(alpha = 0.22f)
-        task.accumulatedTimeMillis > 0L -> palette.greenBg.copy(alpha = 0.12f)
-        isActive -> palette.greenBg.copy(alpha = 0.18f)
-        else -> Color.Transparent
-    }
+    // Row always uses default style - highlight only on badge area
+    val rowBackgroundColor = Color.Transparent
+    val rowBorderColor = palette.line
     SwipeActionCard(
         modifier = modifier,
         reorderModifier = reorderModifier,
@@ -2712,16 +2587,16 @@ private fun TaskRow(
             icon = Icons.Rounded.Check,
             alignStart = false
         ),
-        onPositiveAllowed = { !isEditMode },
-        onNegativeAllowed = { !isEditMode },
+        onPositiveAllowed = { true },
+        onNegativeAllowed = { true },
         onPositiveCommit = onComplete,
         onNegativeCommit = onComplete,
         onPositiveCommitHaptic = haptics::vibrateDoubleTick,
         onNegativeReleaseDurationMs = 280,
         onNegativeDismissScale = 0.95f,
         onNegativeRejected = {},
-        onTap = onTap,
-        swipeEnabled = swipeEnabled && !isEditMode,
+        onTap = onEdit,
+        swipeEnabled = swipeEnabled,
         onGestureLockChange = onGestureLockChange
     ) {
         Row(
@@ -2729,82 +2604,85 @@ private fun TaskRow(
                 .fillMaxWidth()
                 .height(62.dp)
                 .background(rowBackgroundColor, rowShape)
-                .border(1.dp, timerBorderColor, rowShape)
+                .border(1.dp, rowBorderColor, rowShape)
                 .padding(horizontal = 14.dp, vertical = 9.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            if (isEditMode) {
-                val selectionColor = if (isSelectedForDelete) palette.orange else palette.line
-                Box(
-                    modifier = Modifier
-                        .size(22.dp)
-                        .clip(CircleShape)
-                        .background(if (isSelectedForDelete) palette.orange else Color.Transparent)
-                        .border(1.dp, selectionColor, CircleShape)
-                        .clickable(
-                            interactionSource = remember { MutableInteractionSource() },
-                            indication = null
-                        ) {
-                            haptics.vibrate(HapticTickMs)
-                            onToggleDeleteSelection()
-                        },
-                    contentAlignment = Alignment.Center
+            val hasDueDate = dueBadge != null && dueText.isNotBlank() && dueText != " "
+            Box(
+                modifier = Modifier.weight(1f),
+                contentAlignment = if (hasDueDate) Alignment.CenterStart else Alignment.Center
+            ) {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = if (hasDueDate) Arrangement.Center else Arrangement.Center
                 ) {
-                    if (isSelectedForDelete) {
-                        Icon(
-                            imageVector = Icons.Rounded.Check,
-                            contentDescription = "Selected for deletion",
-                            tint = palette.background,
-                            modifier = Modifier.size(14.dp)
+                    Text(
+                        text = task.title,
+                        color = palette.textMain,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Medium,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    if (hasDueDate) {
+                        Text(
+                            text = dueText,
+                            color = dueColor,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Medium,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
                         )
                     }
                 }
-                Spacer(modifier = Modifier.width(10.dp))
-            }
-
-            Column(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.Center
-            ) {
-                Text(
-                    text = task.title,
-                    color = palette.textMain,
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Medium,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Text(
-                    text = dueText,
-                    color = dueColor,
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Medium,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
             }
             Spacer(modifier = Modifier.width(10.dp))
-            Column(
-                modifier = Modifier.widthIn(min = 48.dp),
-                horizontalAlignment = Alignment.End,
-                verticalArrangement = Arrangement.Center
+            // Badge: show value if set and no timer, otherwise show timer (always clickable)
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(
+                        when {
+                            task.isTimerRunning -> palette.orangeBg.copy(alpha = 0.3f)
+                            totalMillis > 0L -> palette.greenBg.copy(alpha = 0.2f)
+                            hasManualValue -> palette.greenBg.copy(alpha = 0.2f)
+                            else -> Color.Transparent
+                        }
+                    )
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null
+                    ) {
+                        haptics.vibrate(HapticTickMs)
+                        onToggleTimer()
+                    }
+                    .padding(horizontal = 8.dp, vertical = 4.dp),
+                contentAlignment = Alignment.Center
             ) {
-                Text(
-                    text = timeFormatted,
-                    color = timerTextColor,
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    textAlign = TextAlign.End,
-                    maxLines = 1
-                )
-                Text(
-                    text = rewardText,
-                    color = rewardTextColor,
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.Bold,
-                    textAlign = TextAlign.End,
-                    maxLines = 1
-                )
+                // If timer is running or has time, show timer; otherwise show fixed value
+                val showTimer = task.isTimerRunning || totalMillis > 0
+                if (showTimer) {
+                    // Show timer
+                    Text(
+                        text = timeFormatted,
+                        color = timerTextColor,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        textAlign = TextAlign.End,
+                        maxLines = 1
+                    )
+                } else {
+                    // Show fixed value
+                    Text(
+                        text = "+$${task.valAmount}",
+                        color = palette.green,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        textAlign = TextAlign.End,
+                        maxLines = 1
+                    )
+                }
             }
         }
     }

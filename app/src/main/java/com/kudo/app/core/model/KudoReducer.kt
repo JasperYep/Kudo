@@ -5,7 +5,6 @@ import kotlin.math.floor
 object KudoReducer {
 
     fun addTask(
-        taskMultiplier: Int = 1,
         state: KudoState,
         title: String,
         value: Int,
@@ -29,7 +28,6 @@ object KudoReducer {
             id = now,
             title = title,
             valAmount = value,
-            taskMultiplier = taskMultiplier,
             type = type,
             count = 0,
             last = 0L,
@@ -121,23 +119,21 @@ object KudoReducer {
         val task = state.tasks.firstOrNull { it.id == id } ?: return state
         if (task.type != KudoState.TYPE_TASK) return state
 
-        val runningElapsed = if (task.isTimerRunning) {
-            (now - task.lastTimerStart).coerceAtLeast(0L)
+        // If user set a manual value (valAmount > 0), use it; otherwise calculate from time
+        val baseValue = if (task.valAmount > 0) {
+            task.valAmount
         } else {
-            0L
+            val runningElapsed = if (task.isTimerRunning) {
+                (now - task.lastTimerStart).coerceAtLeast(0L)
+            } else {
+                0L
+            }
+            val totalMillis = (task.accumulatedTimeMillis + runningElapsed).coerceAtLeast(0L)
+            (totalMillis / 60_000L).toInt() // 1 coin per minute
         }
-        val totalMillis = (task.accumulatedTimeMillis + runningElapsed).coerceAtLeast(0L)
-        val totalMinutes = (totalMillis / 60_000L).toInt()
-        val taskMultiplier = task.taskMultiplier.coerceIn(1, 3)
-        val baseValue = totalMinutes * taskMultiplier
-        val reward = floor(baseValue * state.multiplier).toInt()
+
+        val reward = baseValue
         val rewarded = state.copy(coins = state.coins + reward)
-        val grown = processGrowth(rewarded, baseValue)
-        val completedSnapshot = task.copy(
-            isTimerRunning = false,
-            accumulatedTimeMillis = totalMillis,
-            lastTimerStart = 0L
-        )
         val log = KudoLogEntry(
             timestamp = now,
             text = task.title,
@@ -146,12 +142,12 @@ object KudoReducer {
             type = "task",
             taskId = task.id,
             isHabit = false,
-            itemData = KudoLogItemData.fromTask(completedSnapshot)
+            itemData = KudoLogItemData.fromTask(task)
         )
 
-        return grown.copy(
-            tasks = grown.tasks.filterNot { it.id == id },
-            logs = listOf(log) + grown.logs
+        return rewarded.copy(
+            tasks = rewarded.tasks.filterNot { it.id == id },
+            logs = listOf(log) + rewarded.logs
         )
     }
 

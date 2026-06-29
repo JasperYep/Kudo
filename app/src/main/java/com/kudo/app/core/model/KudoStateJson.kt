@@ -5,8 +5,6 @@ import kotlinx.serialization.json.Json
 
 object KudoStateJson {
 
-    private const val LEGACY_LIST_FOCUS = "focus"
-
     private val json = Json {
         ignoreUnknownKeys = true
         encodeDefaults = true
@@ -36,16 +34,22 @@ object KudoStateJson {
     }
 
     fun sanitize(state: KudoState): KudoState {
+        // Reset all running timers before save/load - prevents stale timer issues
+        val resetTasks = state.tasks.map { task ->
+            task.copy(
+                isTimerRunning = false,
+                lastTimerStart = 0L
+            )
+        }
         return state.copy(
+            tasks = resetTasks,
             taskSortMode = sanitizeTaskSortMode(state.taskSortMode)
         )
     }
 
-    // Merges legacy inbox/focus lists: focus tasks first (preserving their order), then inbox.
+    // Legacy list merging removed - list field no longer exists
     private fun mergeLegacyLists(tasks: List<KudoTask>): List<KudoTask> {
-        val focusTasks = tasks.filter { it.list == LEGACY_LIST_FOCUS || it.list == null }
-        val inboxTasks = tasks.filter { it.list != LEGACY_LIST_FOCUS && it.list != null }
-        return focusTasks + inboxTasks
+        return tasks
     }
 
     private fun sanitizeTaskSortMode(mode: Int): Int {
