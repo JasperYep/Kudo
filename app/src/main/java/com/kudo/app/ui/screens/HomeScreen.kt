@@ -389,7 +389,6 @@ fun HomeScreen(
                             onExitHabitJiggle = viewModel::exitHabitJiggleMode,
                             onEnterHabitJiggle = viewModel::enterHabitJiggleMode,
                             onDeleteHabit = viewModel::deleteTaskItem,
-                            onDeleteTasks = viewModel::deleteTaskItems,
                             onReorderTask = viewModel::reorderTasks,
                             onReorderHabits = viewModel::reorderHabits,
                             onCompleteTask = viewModel::completeTask,
@@ -1168,7 +1167,8 @@ private fun DashboardCard(
     }
     val valuePlaceholder = when {
         currentView == KudoViewModel.VIEW_STORE -> "0"
-        else -> "" // Optional - empty means use timer
+        taskCreationTarget == TaskCreationTarget.HABIT -> "10"
+        else -> ""
     }
     val modeText = when {
         currentView == KudoViewModel.VIEW_STORE && storeMode == KudoState.STORE_INFINITE -> "INFIN"
@@ -1189,7 +1189,6 @@ private fun DashboardCard(
     val addButtonProgress = revealProgress.coerceIn(0f, 1f)
     val addButtonScale = lerpFloat(0.7f, 1f, addButtonProgress)
     val addButtonAlpha = lerpFloat(0.56f, 1f, addButtonProgress)
-    val showValueInput = currentView != KudoViewModel.VIEW_STORE && taskCreationTarget != TaskCreationTarget.HABIT
     val interactionSource = remember { MutableInteractionSource() }
 
     Card(
@@ -1231,56 +1230,27 @@ private fun DashboardCard(
                     .padding(horizontal = 8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // Always show value input for tasks (Store uses "0", Habits have their fixed value)
-                if (showValueInput) {
-                    Row(
-                        modifier = Modifier.padding(start = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = "${'$'}",
-                            color = palette.textSub,
-                            fontSize = 14.sp,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                        Spacer(modifier = Modifier.width(2.dp))
-                        DashboardTextField(
-                            value = value,
-                            onValueChange = onValueChange,
-                            modifier = Modifier.width(50.dp),
-                            placeholder = valuePlaceholder,
-                            textColor = valueColor,
-                            placeholderColor = palette.textSub.copy(alpha = 0.4f),
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                            textAlign = TextAlign.Start
-                        )
-                    }
-                } else {
-                    // Store and Habits use fixed cost/val display, show $ indicator
-                    if (currentView == KudoViewModel.VIEW_STORE || taskCreationTarget == TaskCreationTarget.HABIT) {
-                        Row(
-                            modifier = Modifier.padding(start = 8.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                text = "${'$'}",
-                                color = palette.textSub,
-                                fontSize = 14.sp,
-                                fontWeight = FontWeight.SemiBold
-                            )
-                            Spacer(modifier = Modifier.width(2.dp))
-                            DashboardTextField(
-                                value = value,
-                                onValueChange = onValueChange,
-                                modifier = Modifier.width(50.dp),
-                                placeholder = valuePlaceholder,
-                                textColor = valueColor,
-                                placeholderColor = palette.textSub.copy(alpha = 0.4f),
-                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                                textAlign = TextAlign.Start
-                            )
-                        }
-                    }
+                Row(
+                    modifier = Modifier.padding(start = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "${'$'}",
+                        color = palette.textSub,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Spacer(modifier = Modifier.width(2.dp))
+                    DashboardTextField(
+                        value = value,
+                        onValueChange = onValueChange,
+                        modifier = Modifier.width(50.dp),
+                        placeholder = valuePlaceholder,
+                        textColor = valueColor,
+                        placeholderColor = palette.textSub.copy(alpha = 0.4f),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        textAlign = TextAlign.Start
+                    )
                 }
 
                 Box(
@@ -1367,7 +1337,6 @@ private fun TasksPage(
     onExitHabitJiggle: () -> Unit,
     onEnterHabitJiggle: () -> Unit,
     onDeleteHabit: (Long) -> Unit,
-    onDeleteTasks: (Set<Long>) -> Unit,
     onReorderTask: (List<Long>) -> Unit,
     onReorderHabits: (List<Long>) -> Unit,
     onCompleteTask: (Long) -> Unit,
@@ -1562,7 +1531,6 @@ private fun TasksPage(
             }
         } else {
             items(localTasks, key = { it.id }) { task ->
-                val isActive = localTasks.firstOrNull()?.id == task.id
                 ReorderableItem(
                     state = state,
                     key = task.id,
@@ -1572,8 +1540,6 @@ private fun TasksPage(
                         TaskRow(
                             task = task,
                             palette = palette,
-                            finalMultiplier = multiplier,
-                            isActive = isActive,
                             isDragging = isDragging,
                             modifier = Modifier
                                 .padding(horizontal = 16.dp, vertical = 2.dp)
@@ -2517,7 +2483,6 @@ private fun HabitChip(
 private fun TaskRow(
     task: KudoTask,
     palette: KudoPalette,
-    finalMultiplier: Float,
     isActive: Boolean = false,
     isDragging: Boolean = false,
     modifier: Modifier = Modifier,
@@ -2545,11 +2510,14 @@ private fun TaskRow(
         0L
     }
     val totalMillis = (task.accumulatedTimeMillis + runningElapsed).coerceAtLeast(0L)
-    val totalMinutes = (totalMillis / 60_000L).toInt()
-    val timeBasedValue = totalMinutes  // 1 coin per minute
+    val timerEquivalentValue = (totalMillis / 60_000L).toInt()
     val hasManualValue = task.valAmount > 0
-    val baseValue = if (hasManualValue) task.valAmount else timeBasedValue
-    val reward = (baseValue * finalMultiplier).toInt()
+    val timerValueExceedsManualValue = hasManualValue && totalMillis > task.valAmount * 60_000L
+    val stoppedBadgeText = if (hasManualValue) {
+        "$${task.valAmount}"
+    } else {
+        "$$timerEquivalentValue"
+    }
 
     val timeFormatted = remember(totalMillis) {
         val totalSec = totalMillis / 1000
@@ -2563,10 +2531,10 @@ private fun TaskRow(
     }
     val dueText = dueBadge?.text ?: " "
     val dueColor = dueBadge?.color ?: palette.textSub.copy(alpha = 0f)
-    val timerTextColor = when {
+    val badgeTextColor = when {
+        timerValueExceedsManualValue -> palette.red
         task.isTimerRunning -> palette.orange
-        totalMillis > 0L -> palette.green
-        else -> palette.textSub.copy(alpha = 0.58f)
+        else -> palette.green
     }
     val rowShape = RoundedCornerShape(14.dp)
     // Row always uses default style - highlight only on badge area
@@ -2638,7 +2606,7 @@ private fun TaskRow(
                 }
             }
             Spacer(modifier = Modifier.width(10.dp))
-            // Badge: show value if set and no timer, otherwise show timer (always clickable)
+            // Badge is always clickable: running shows elapsed time, stopped shows reward value.
             Box(
                 modifier = Modifier
                     .clip(RoundedCornerShape(8.dp))
@@ -2646,8 +2614,7 @@ private fun TaskRow(
                         when {
                             task.isTimerRunning -> palette.orangeBg.copy(alpha = 0.3f)
                             totalMillis > 0L -> palette.greenBg.copy(alpha = 0.2f)
-                            hasManualValue -> palette.greenBg.copy(alpha = 0.2f)
-                            else -> Color.Transparent
+                            else -> palette.greenBg.copy(alpha = 0.2f)
                         }
                     )
                     .clickable(
@@ -2660,23 +2627,19 @@ private fun TaskRow(
                     .padding(horizontal = 8.dp, vertical = 4.dp),
                 contentAlignment = Alignment.Center
             ) {
-                // If timer is running or has time, show timer; otherwise show fixed value
-                val showTimer = task.isTimerRunning || totalMillis > 0
-                if (showTimer) {
-                    // Show timer
+                if (task.isTimerRunning) {
                     Text(
                         text = timeFormatted,
-                        color = timerTextColor,
+                        color = badgeTextColor,
                         fontSize = 13.sp,
                         fontWeight = FontWeight.SemiBold,
                         textAlign = TextAlign.End,
                         maxLines = 1
                     )
                 } else {
-                    // Show fixed value
                     Text(
-                        text = "+$${task.valAmount}",
-                        color = palette.green,
+                        text = stoppedBadgeText,
+                        color = badgeTextColor,
                         fontSize = 13.sp,
                         fontWeight = FontWeight.SemiBold,
                         textAlign = TextAlign.End,

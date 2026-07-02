@@ -18,8 +18,7 @@ object KudoStateJson {
 
         return try {
             val state = json.decodeFromString<KudoState>(raw)
-            val mergedTasks = mergeLegacyLists(state.tasks)
-            sanitize(state.copy(tasks = mergedTasks))
+            sanitize(state)
         } catch (_: Exception) {
             null
         }
@@ -34,22 +33,9 @@ object KudoStateJson {
     }
 
     fun sanitize(state: KudoState): KudoState {
-        // Reset all running timers before save/load - prevents stale timer issues
-        val resetTasks = state.tasks.map { task ->
-            task.copy(
-                isTimerRunning = false,
-                lastTimerStart = 0L
-            )
-        }
         return state.copy(
-            tasks = resetTasks,
             taskSortMode = sanitizeTaskSortMode(state.taskSortMode)
         )
-    }
-
-    // Legacy list merging removed - list field no longer exists
-    private fun mergeLegacyLists(tasks: List<KudoTask>): List<KudoTask> {
-        return tasks
     }
 
     private fun sanitizeTaskSortMode(mode: Int): Int {

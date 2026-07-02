@@ -47,8 +47,7 @@ class KudoViewModel(application: Application) : AndroidViewModel(application) {
         val recentStoreInsertId: Long? = null,
         val showUndoBanner: Boolean = false,
         val isImportPreviewVisible: Boolean = false,
-        val importPreviewDrafts: List<KudoTaskImportDraft> = emptyList(),
-        val taskMultiplierMode: Int = 1  // For backward compatibility only
+        val importPreviewDrafts: List<KudoTaskImportDraft> = emptyList()
     )
     private val viewState = MutableStateFlow(KudoViewState())
 
@@ -72,8 +71,7 @@ class KudoViewModel(application: Application) : AndroidViewModel(application) {
             recentStoreInsertId = view.recentStoreInsertId,
             showUndoBanner = view.showUndoBanner,
             isImportPreviewVisible = view.isImportPreviewVisible,
-            importPreviewDrafts = view.importPreviewDrafts,
-            taskMultiplierMode = view.taskMultiplierMode
+            importPreviewDrafts = view.importPreviewDrafts
         )
     }.stateIn(
         scope = viewModelScope,
@@ -332,15 +330,6 @@ class KudoViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch { repository.updateState { state -> KudoReducer.deleteTask(state, id) } }
     }
 
-    fun deleteTaskItems(ids: Set<Long>) {
-        if (ids.isEmpty()) return
-        viewModelScope.launch {
-            repository.updateState { state ->
-                ids.fold(state) { current, id -> KudoReducer.deleteTask(current, id) }
-            }
-        }
-    }
-
     fun setTheme(theme: String) {
         viewModelScope.launch { repository.setTheme(theme) }
     }
@@ -387,20 +376,11 @@ class KudoViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private fun parseDashboardValue(raw: String): Int {
-        // Return 0 if blank (meaning use timer as value source)
         if (raw.isBlank()) {
             return 0
         }
         return parseEditValue(raw)
     }
-
-
-
-
-
-
-
-
     fun showImportPreview(text: String) {
         val drafts = KudoTaskTextImport.parse(text)
         if (drafts.isNotEmpty()) {
@@ -497,8 +477,7 @@ data class KudoUiState(
     val recentStoreInsertId: Long? = null,
     val showUndoBanner: Boolean = false,
     val isImportPreviewVisible: Boolean = false,
-    val importPreviewDrafts: List<KudoTaskImportDraft> = emptyList(),
-    val taskMultiplierMode: Int = 1  // For backward compatibility only
+    val importPreviewDrafts: List<KudoTaskImportDraft> = emptyList()
 )
 
 @Immutable
