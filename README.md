@@ -22,6 +22,7 @@ Simple loop. Clear feedback.
 - Track recurring habits
 - Keep tasks in one ordered queue
 - Add tasks quickly with a pull-down composer
+- Time tasks when the value is unclear, or set a fixed coin value manually
 - Import plain-text or Markdown task lists into Tasks
 - Earn coins as you complete tasks, with rewards shaped by recent effort
 - Spend coins in your personal reward store
@@ -44,7 +45,7 @@ They are a small system for making effort feel tangible.
 
 Kudo keeps the main task flow direct.
 
-- **Tasks** live in one queue you can reorder
+- **Tasks** live in one queue you can reorder, with fixed or timer-based coin values
 - **Habits** are repeatable actions
 - **Store** holds personal rewards
 - **Log** records completed work and spending
