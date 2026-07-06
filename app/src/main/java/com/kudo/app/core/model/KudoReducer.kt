@@ -94,24 +94,25 @@ object KudoReducer {
 
         return state.copy(
             tasks = state.tasks.map { t ->
-                if (t.id == id) {
-                    if (t.isTimerRunning) {
-                        val elapsed = (now - t.lastTimerStart).coerceAtLeast(0L)
-                        t.copy(
-                            isTimerRunning = false,
-                            accumulatedTimeMillis = t.accumulatedTimeMillis + elapsed,
-                            lastTimerStart = 0L
-                        )
-                    } else {
-                        t.copy(
-                            isTimerRunning = true,
-                            lastTimerStart = now
-                        )
-                    }
-                } else {
-                    t
+                when {
+                    t.id == id && t.isTimerRunning -> pauseTimer(t, now)
+                    t.id == id -> t.copy(
+                        isTimerRunning = true,
+                        lastTimerStart = now
+                    )
+                    t.type == KudoState.TYPE_TASK && t.isTimerRunning -> pauseTimer(t, now)
+                    else -> t
                 }
             }
+        )
+    }
+
+    private fun pauseTimer(task: KudoTask, now: Long): KudoTask {
+        val elapsed = (now - task.lastTimerStart).coerceAtLeast(0L)
+        return task.copy(
+            isTimerRunning = false,
+            accumulatedTimeMillis = task.accumulatedTimeMillis + elapsed,
+            lastTimerStart = 0L
         )
     }
 
