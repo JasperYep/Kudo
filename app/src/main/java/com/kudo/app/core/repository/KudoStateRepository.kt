@@ -17,6 +17,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 class KudoStateRepository(
@@ -50,6 +51,18 @@ class KudoStateRepository(
     val theme: Flow<String> = snapshot
         .map { it.theme }
         .distinctUntilChanged()
+
+    init {
+        applicationScope.launch {
+            val raw = context.dataStore.data.first()[Keys.STATE_JSON] ?: return@launch
+            val canonical = KudoStateJson.encode(KudoStateJson.decode(raw))
+            if (raw != canonical) {
+                context.dataStore.edit { preferences ->
+                    preferences[Keys.STATE_JSON] = canonical
+                }
+            }
+        }
+    }
 
     suspend fun getState(): KudoState {
         return snapshot.value.state

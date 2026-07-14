@@ -201,7 +201,6 @@ import com.kudo.app.ui.theme.LightTextSub
 import com.kudo.app.ui.viewmodel.EditingTarget
 import com.kudo.app.ui.viewmodel.KudoUiState
 import com.kudo.app.ui.viewmodel.KudoViewModel
-import com.kudo.app.ui.viewmodel.TaskCreationTarget
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
@@ -275,8 +274,7 @@ fun HomeScreen(
         derivedStateOf {
             val now = System.currentTimeMillis()
             uiState.data.tasks.any { task ->
-                task.type == KudoState.TYPE_TASK &&
-                    (task.dueAtEpochMillis ?: 0L) > now
+                (task.dueAtEpochMillis ?: 0L) > now
             }
         }
     }
@@ -346,7 +344,6 @@ fun HomeScreen(
                 when (uiState.currentView) {
                     KudoViewModel.VIEW_TASKS -> PullComposerPage(
                         currentView = uiState.currentView,
-                        taskCreationTarget = uiState.taskCreationTarget,
                         storeMode = uiState.storeMode,
                         palette = palette,
                         title = taskDraftTitle,
@@ -362,7 +359,7 @@ fun HomeScreen(
                             }
                         },
                         onValueChange = { taskDraftValue = it.filter(Char::isDigit) },
-                        onModeToggle = viewModel::cycleTaskCreationTarget,
+                        onModeToggle = {},
                         onAdd = {
                             if (viewModel.addDashboardItem(taskDraftTitle, taskDraftValue)) {
                                 taskDraftTitle = ""
@@ -376,32 +373,22 @@ fun HomeScreen(
                     ) { modifier, pageScrollEnabled, onGestureLockChange ->
                         TasksPage(
                             tasks = uiState.data.tasks,
-                            multiplier = uiState.data.multiplier,
                             taskSortMode = uiState.data.taskSortMode,
-                            habitsCollapsed = uiState.habitsCollapsed,
-                            isHabitJiggleMode = uiState.isHabitJiggleMode,
                             recentTaskInsertId = uiState.recentTaskInsertId,
                             palette = palette,
                             modifier = modifier,
                             userScrollEnabled = pageScrollEnabled,
                             onGestureLockChange = onGestureLockChange,
-                            onToggleHabits = viewModel::toggleHabitsCollapsed,
-                            onExitHabitJiggle = viewModel::exitHabitJiggleMode,
-                            onEnterHabitJiggle = viewModel::enterHabitJiggleMode,
-                            onDeleteHabit = viewModel::deleteTaskItem,
                             onReorderTask = viewModel::reorderTasks,
-                            onReorderHabits = viewModel::reorderHabits,
                             onCompleteTask = viewModel::completeTask,
                             onEditTask = viewModel::openEditTask,
                             onToggleTimer = viewModel::toggleTimer,
-                            onCompleteHabit = viewModel::completeHabit,
                             listState = tasksListState
                         )
                     }
 
                     KudoViewModel.VIEW_STORE -> PullComposerPage(
                         currentView = uiState.currentView,
-                        taskCreationTarget = uiState.taskCreationTarget,
                         storeMode = uiState.storeMode,
                         palette = palette,
                         title = storeDraftTitle,
@@ -739,7 +726,6 @@ private fun ComposerRevealPanel(
 @Composable
 private fun PullComposerPage(
     currentView: String,
-    taskCreationTarget: TaskCreationTarget,
     storeMode: Int,
     palette: KudoPalette,
     title: String,
@@ -1014,7 +1000,6 @@ private fun PullComposerPage(
             ) {
                 DashboardCard(
                     currentView = currentView,
-                    taskCreationTarget = taskCreationTarget,
                     storeMode = storeMode,
                     palette = palette,
                     revealProgress = composerRevealProgress,
@@ -1148,7 +1133,6 @@ private fun Header(
 @Composable
 private fun DashboardCard(
     currentView: String,
-    taskCreationTarget: TaskCreationTarget,
     storeMode: Int,
     palette: KudoPalette,
     revealProgress: Float,
@@ -1160,29 +1144,13 @@ private fun DashboardCard(
     onAdd: () -> Boolean
 ) {
     val haptics = rememberKudoHaptics()
-    val titlePlaceholder = when {
-        currentView == KudoViewModel.VIEW_STORE -> "Add to Store..."
-        taskCreationTarget == TaskCreationTarget.HABIT -> "Add Habit..."
-        else -> "Add Task..."
-    }
-    val valuePlaceholder = when {
-        currentView == KudoViewModel.VIEW_STORE -> "0"
-        taskCreationTarget == TaskCreationTarget.HABIT -> "10"
-        else -> ""
-    }
-    val modeText = when {
-        currentView == KudoViewModel.VIEW_STORE && storeMode == KudoState.STORE_INFINITE -> "INFIN"
-        currentView == KudoViewModel.VIEW_STORE -> "ONCE"
-        taskCreationTarget == TaskCreationTarget.HABIT -> "HABIT"
-        else -> "TASK"
-    }
-    val modeColor = when {
-        currentView == KudoViewModel.VIEW_STORE -> palette.orange
-        taskCreationTarget == TaskCreationTarget.HABIT -> palette.gold
-        else -> palette.green
-    }
+    val isStore = currentView == KudoViewModel.VIEW_STORE
+    val titlePlaceholder = if (isStore) "Add to Store..." else "Add Task..."
+    val valuePlaceholder = if (isStore) "0" else ""
+    val modeText = if (isStore && storeMode == KudoState.STORE_INFINITE) "INFIN" else if (isStore) "ONCE" else "TASK"
+    val modeColor = if (isStore) palette.orange else palette.green
     val valueColor = when {
-        currentView == KudoViewModel.VIEW_STORE -> palette.orange
+        isStore -> palette.orange
         value.isBlank() || value == "0" -> palette.textSub
         else -> palette.green
     }
@@ -1264,13 +1232,19 @@ private fun DashboardCard(
                 Row(
                     modifier = Modifier
                         .weight(1f)
-                        .clickable(
-                            interactionSource = interactionSource,
-                            indication = null
-                        ) {
-                            haptics.vibrate(HapticTickMs)
-                            onModeToggle()
-                        }
+                        .then(
+                            if (isStore) {
+                                Modifier.clickable(
+                                    interactionSource = interactionSource,
+                                    indication = null
+                                ) {
+                                    haptics.vibrate(HapticTickMs)
+                                    onModeToggle()
+                                }
+                            } else {
+                                Modifier
+                            }
+                        )
                         .padding(horizontal = 8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
@@ -1281,13 +1255,15 @@ private fun DashboardCard(
                         fontWeight = FontWeight.SemiBold,
                         letterSpacing = 0.5.sp
                     )
-                    Spacer(modifier = Modifier.width(3.dp))
-                    Icon(
-                        imageVector = Icons.Rounded.KeyboardArrowDown,
-                        contentDescription = null,
-                        tint = modeColor,
-                        modifier = Modifier.size(13.dp)
-                    )
+                    if (isStore) {
+                        Spacer(modifier = Modifier.width(3.dp))
+                        Icon(
+                            imageVector = Icons.Rounded.KeyboardArrowDown,
+                            contentDescription = null,
+                            tint = modeColor,
+                            modifier = Modifier.size(13.dp)
+                        )
+                    }
                 }
 
                 Box(
@@ -1324,47 +1300,28 @@ private fun DashboardCard(
 @Composable
 private fun TasksPage(
     tasks: List<KudoTask>,
-    multiplier: Float,
     taskSortMode: Int,
-    habitsCollapsed: Boolean,
-    isHabitJiggleMode: Boolean,
     recentTaskInsertId: Long?,
     palette: KudoPalette,
     modifier: Modifier = Modifier,
     userScrollEnabled: Boolean = true,
     onGestureLockChange: (Boolean) -> Unit,
-    onToggleHabits: () -> Unit,
-    onExitHabitJiggle: () -> Unit,
-    onEnterHabitJiggle: () -> Unit,
-    onDeleteHabit: (Long) -> Unit,
     onReorderTask: (List<Long>) -> Unit,
-    onReorderHabits: (List<Long>) -> Unit,
     onCompleteTask: (Long) -> Unit,
     onEditTask: (Long) -> Unit,
     onToggleTimer: (Long) -> Unit,
-    onCompleteHabit: (Long) -> Unit,
     listState: LazyListState
 ) {
     val haptics = rememberKudoHaptics()
-    var isHabitGestureLocked by remember { mutableStateOf(false) }
     var isTaskSwipeGestureLocked by remember { mutableStateOf(false) }
     var isTaskLongPressGestureLocked by remember { mutableStateOf(false) }
-    val habits = remember(tasks) {
-        tasks.filter { it.type == KudoState.TYPE_HABIT }
-    }
-    var localHabits by remember { mutableStateOf(habits) }
-    val currentSortMode = taskSortMode
-    val taskItems = remember(tasks, currentSortMode) {
-        sortTasksForDisplay(
-            tasks = tasks.filter { it.type == KudoState.TYPE_TASK },
-            sortMode = currentSortMode
-        )
+    val taskItems = remember(tasks, taskSortMode) {
+        sortTasksForDisplay(tasks = tasks, sortMode = taskSortMode)
     }
 
     var localTasks by remember { mutableStateOf(taskItems) }
     var lastTaskSwapHapticAtMs by remember { mutableStateOf(0L) }
     val newTopTaskId = localTasks.lastOrNull()?.id?.takeIf { it == recentTaskInsertId }
-
     val localTaskIds = remember(localTasks) { localTasks.map(KudoTask::id).toSet() }
     val taskOrderIds = remember(taskItems) { taskItems.map(KudoTask::id) }
     val localTaskOrderIds = remember(localTasks) { localTasks.map(KudoTask::id) }
@@ -1373,7 +1330,6 @@ private fun TasksPage(
     val latestTaskOrderIds by rememberUpdatedState(taskOrderIds)
     val latestLocalTaskOrderIds by rememberUpdatedState(localTaskOrderIds)
     val latestOnReorderTask by rememberUpdatedState(onReorderTask)
-    var pendingDeleteHabitId by remember { mutableStateOf<Long?>(null) }
     val dragCancelledAnimation = remember {
         SpringDragCancelledAnimation(stiffness = ReorderCancelAnimationStiffness)
     }
@@ -1416,33 +1372,18 @@ private fun TasksPage(
         derivedStateOf { state.draggingItemIndex != null }
     }
     val isListGestureLocked =
-        isTaskReordering ||
-            isHabitGestureLocked ||
-            isTaskSwipeGestureLocked ||
-            isTaskLongPressGestureLocked
+        isTaskReordering || isTaskSwipeGestureLocked || isTaskLongPressGestureLocked
 
-    LaunchedEffect(habits) {
-        if (!isHabitGestureLocked) {
-            localHabits = habits
-        }
-    }
     LaunchedEffect(taskItems) {
         if (!isTaskReordering) {
             localTasks = taskItems
         }
     }
-
     LaunchedEffect(isListGestureLocked) {
         onGestureLockChange(isListGestureLocked)
     }
-    LaunchedEffect(isHabitJiggleMode) {
-        if (!isHabitJiggleMode) {
-            isHabitGestureLocked = false
-        }
-    }
     DisposableEffect(Unit) {
         onDispose {
-            isHabitGestureLocked = false
             isTaskSwipeGestureLocked = false
             isTaskLongPressGestureLocked = false
             onGestureLockChange(false)
@@ -1452,82 +1393,15 @@ private fun TasksPage(
     LazyColumn(
         state = state.listState,
         userScrollEnabled = userScrollEnabled && !isListGestureLocked,
-        modifier = modifier
-            .reorderable(state)
+        modifier = modifier.reorderable(state)
     ) {
-        if (habits.isNotEmpty()) {
-            item(key = "habits_header") {
-                SectionHeader(
-                    title = "Habits",
-                    palette = palette,
-                    collapsible = true,
-                    collapsed = habitsCollapsed,
-                    onClick = {
-                        onExitHabitJiggle()
-                        onToggleHabits()
-                    }
-                )
-            }
-            item(key = "habits_grid") {
-                AnimatedVisibility(
-                    visible = !habitsCollapsed,
-                    modifier = Modifier.clipToBounds(),
-                    enter = fadeIn(animationSpec = tween(150)) + expandVertically(
-                        animationSpec = spring(
-                            dampingRatio = 0.86f,
-                            stiffness = 520f
-                        )
-                    ),
-                    exit = fadeOut(animationSpec = tween(120)) + shrinkVertically(
-                        animationSpec = tween(durationMillis = 180)
-                    )
-                ) {
-                    HabitsGrid(
-                        habits = localHabits,
-                        palette = palette,
-                        finalMultiplier = multiplier,
-                        isJiggleMode = isHabitJiggleMode,
-                        modifier = Modifier.padding(horizontal = 16.dp),
-                        onGestureLockChange = { isHabitGestureLocked = it },
-                        onHabitsChange = { localHabits = it },
-                        onDragFinished = {
-                            if (localHabits.map(KudoTask::id) != habits.map(KudoTask::id)) {
-                                onReorderHabits(localHabits.map(KudoTask::id))
-                            }
-                        },
-                        onCompleteHabit = onCompleteHabit,
-                        onEnterJiggle = onEnterHabitJiggle,
-                        onDeleteHabit = { pendingDeleteHabitId = it }
-                    )
-                }
-            }
-        }
-
         item(key = "tasks_header") {
-            SectionHeader(
-                title = "TASKS",
-                palette = palette
-            )
+            SectionHeader(title = "TASKS", palette = palette)
         }
 
         if (taskItems.isEmpty()) {
             item(key = "empty_tasks") {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .then(
-                            if (isHabitJiggleMode) {
-                                Modifier.clickable(
-                                    interactionSource = remember { MutableInteractionSource() },
-                                    indication = null
-                                ) { onExitHabitJiggle() }
-                            } else {
-                                Modifier
-                            }
-                        )
-                ) {
-                    EmptyState(text = "No tasks", palette = palette)
-                }
+                EmptyState(text = "No tasks", palette = palette)
             }
         } else {
             items(localTasks, key = { it.id }) { task ->
@@ -1553,17 +1427,9 @@ private fun TasksPage(
                                 .detectReorderAfterLongPress(state),
                             swipeEnabled = !isDragging && !isTaskLongPressGestureLocked,
                             onGestureLockChange = { isTaskSwipeGestureLocked = it },
-                            onComplete = {
-                                onExitHabitJiggle()
-                                onCompleteTask(task.id)
-                            },
-                            onEdit = {
-                                onExitHabitJiggle()
-                                onEditTask(task.id)
-                            },
-                            onToggleTimer = {
-                                onToggleTimer(task.id)
-                            }
+                            onComplete = { onCompleteTask(task.id) },
+                            onEdit = { onEditTask(task.id) },
+                            onToggleTimer = { onToggleTimer(task.id) }
                         )
                     }
                 }
@@ -1573,29 +1439,6 @@ private fun TasksPage(
         item(key = "tasks_bottom_spacer") {
             Spacer(modifier = Modifier.height(24.dp))
         }
-    }
-    if (pendingDeleteHabitId != null) {
-        AlertDialog(
-            onDismissRequest = { pendingDeleteHabitId = null },
-            title = { Text("Delete habit?") },
-            text = { Text("This habit will be removed from your list.") },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        val id = pendingDeleteHabitId ?: return@TextButton
-                        pendingDeleteHabitId = null
-                        onDeleteHabit(id)
-                    }
-                ) {
-                    Text("Delete")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { pendingDeleteHabitId = null }) {
-                    Text("Cancel")
-                }
-            }
-        )
     }
 }
 
@@ -1733,263 +1576,6 @@ private fun StorePage(
             Spacer(modifier = Modifier.height(24.dp))
         }
     }
-}
-
-private val HabitGridSpacing = 10.dp
-private val HabitGridItemHeight = 64.dp
-
-@Composable
-private fun HabitsGrid(
-    habits: List<KudoTask>,
-    palette: KudoPalette,
-    finalMultiplier: Float,
-    isJiggleMode: Boolean,
-    modifier: Modifier = Modifier,
-    onGestureLockChange: (Boolean) -> Unit,
-    onHabitsChange: (List<KudoTask>) -> Unit,
-    onDragFinished: () -> Unit,
-    onCompleteHabit: (Long) -> Unit,
-    onEnterJiggle: () -> Unit,
-    onDeleteHabit: (Long) -> Unit
-) {
-    if (habits.isEmpty()) return
-
-    val density = LocalDensity.current
-    val haptics = rememberKudoHaptics()
-    val latestHabits by rememberUpdatedState(habits)
-    val latestOnGestureLockChange by rememberUpdatedState(onGestureLockChange)
-    val latestOnHabitsChange by rememberUpdatedState(onHabitsChange)
-    val latestOnDragFinished by rememberUpdatedState(onDragFinished)
-
-    var draggingHabitId by remember { mutableStateOf<Long?>(null) }
-    var draggingPosition by remember { mutableStateOf(Offset.Zero) }
-    var dragChangedOrder by remember { mutableStateOf(false) }
-    var lastHabitSwapHapticAtMs by remember { mutableStateOf(0L) }
-
-    LaunchedEffect(isJiggleMode) {
-        if (!isJiggleMode) {
-            draggingHabitId = null
-            dragChangedOrder = false
-            lastHabitSwapHapticAtMs = 0L
-        }
-    }
-    DisposableEffect(Unit) {
-        onDispose { latestOnGestureLockChange(false) }
-    }
-
-    BoxWithConstraints(
-        modifier = modifier.fillMaxWidth()
-    ) {
-        val spacingPx = with(density) { HabitGridSpacing.roundToPx() }
-        val itemHeightPx = with(density) { HabitGridItemHeight.roundToPx() }
-        val itemWidthPx = ((constraints.maxWidth - spacingPx).coerceAtLeast(0) / 2f)
-        val rowCount = (habits.size + 1) / 2
-        val gridHeightPx = rowCount * itemHeightPx + (rowCount - 1).coerceAtLeast(0) * spacingPx
-        val maxDragX = (itemWidthPx + spacingPx).coerceAtLeast(0f)
-        val maxDragY = (gridHeightPx - itemHeightPx).coerceAtLeast(0).toFloat()
-        val gridHeight = with(density) {
-            (
-                rowCount * itemHeightPx +
-                    (rowCount - 1).coerceAtLeast(0) * spacingPx
-                ).toDp()
-        }
-        val itemWidthDp = with(density) { itemWidthPx.toDp() }
-        val jiggleRotation = rememberHabitJiggleRotation(isJiggleMode)
-
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(gridHeight)
-                .then(
-                    if (isJiggleMode) {
-                        Modifier.pointerInput(isJiggleMode) {
-                            awaitEachGesture {
-                                awaitFirstDown(
-                                    requireUnconsumed = false,
-                                    pass = PointerEventPass.Initial
-                                )
-                                latestOnGestureLockChange(true)
-                                try {
-                                    var hasPressedPointers = true
-                                    while (hasPressedPointers) {
-                                        val event = awaitPointerEvent(pass = PointerEventPass.Final)
-                                        hasPressedPointers = event.changes.any { it.pressed }
-                                    }
-                                } finally {
-                                    latestOnGestureLockChange(false)
-                                }
-                            }
-                        }
-                    } else {
-                        Modifier
-                    }
-                )
-        ) {
-            habits.forEachIndexed { index, habit ->
-                key(habit.id) {
-                    val targetSlot = remember(index, itemWidthPx, itemHeightPx, spacingPx) {
-                        habitGridSlotOffset(
-                            index = index,
-                            itemWidthPx = itemWidthPx,
-                            itemHeightPx = itemHeightPx,
-                            spacingPx = spacingPx
-                        )
-                    }
-                    val isDragging = draggingHabitId == habit.id
-                    val animatedOffset by animateIntOffsetAsState(
-                        targetValue = if (isDragging) {
-                            IntOffset(
-                                draggingPosition.x.roundToInt(),
-                                draggingPosition.y.roundToInt()
-                            )
-                        } else {
-                            IntOffset(
-                                targetSlot.x.roundToInt(),
-                                targetSlot.y.roundToInt()
-                            )
-                        },
-                        animationSpec = if (isDragging) {
-                            tween(durationMillis = 0)
-                        } else {
-                            spring(
-                                dampingRatio = 0.84f,
-                                stiffness = 620f
-                            )
-                        },
-                        label = "habitGridOffset"
-                    )
-
-                    HabitChip(
-                        task = habit,
-                        palette = palette,
-                        finalMultiplier = finalMultiplier,
-                        isJiggleMode = isJiggleMode,
-                        isDragging = isDragging,
-                        jiggleRotation = jiggleRotation,
-                        modifier = Modifier
-                            .offset { animatedOffset }
-                            .width(itemWidthDp)
-                            .height(HabitGridItemHeight)
-                            .zIndex(if (isDragging) 3f else 0f)
-                            .then(
-                                if (isJiggleMode) {
-                                    Modifier.pointerInput(
-                                        habit.id,
-                                        isJiggleMode,
-                                        itemWidthPx,
-                                        itemHeightPx,
-                                        spacingPx
-                                    ) {
-                                        detectDragGestures(
-                                            onDragStart = {
-                                                draggingHabitId = habit.id
-                                                draggingPosition = targetSlot
-                                                dragChangedOrder = false
-                                                lastHabitSwapHapticAtMs = 0L
-                                                haptics.vibrate(HapticTickMs)
-                                            },
-                                            onDrag = { change, dragAmount ->
-                                                if (draggingHabitId != habit.id) return@detectDragGestures
-                                                change.consume()
-                                                draggingPosition = Offset(
-                                                    x = (draggingPosition.x + dragAmount.x)
-                                                        .coerceIn(0f, maxDragX),
-                                                    y = (draggingPosition.y + dragAmount.y)
-                                                        .coerceIn(0f, maxDragY)
-                                                )
-
-                                                val currentHabits = latestHabits
-                                                val fromIndex = currentHabits.indexOfFirst { it.id == habit.id }
-                                                if (fromIndex == -1) return@detectDragGestures
-
-                                                val targetIndex = habitGridIndexForPosition(
-                                                    centerX = draggingPosition.x + itemWidthPx / 2f,
-                                                    centerY = draggingPosition.y + itemHeightPx / 2f,
-                                                    itemCount = currentHabits.size,
-                                                    itemWidthPx = itemWidthPx,
-                                                    itemHeightPx = itemHeightPx,
-                                                    spacingPx = spacingPx
-                                                )
-
-                                                if (targetIndex != fromIndex) {
-                                                    latestOnHabitsChange(
-                                                        moveListItem(
-                                                            list = currentHabits,
-                                                            fromIndex = fromIndex,
-                                                            toIndex = targetIndex
-                                                        )
-                                                    )
-                                                    dragChangedOrder = true
-                                                    lastHabitSwapHapticAtMs =
-                                                        maybeTriggerReorderSwapHaptic(
-                                                            haptics = haptics,
-                                                            lastHapticAtMs = lastHabitSwapHapticAtMs
-                                                        )
-                                                }
-                                            },
-                                            onDragEnd = {
-                                                draggingHabitId = null
-                                                if (dragChangedOrder) {
-                                                    haptics.vibrate(HapticConfirmMs)
-                                                    latestOnDragFinished()
-                                                }
-                                                dragChangedOrder = false
-                                                lastHabitSwapHapticAtMs = 0L
-                                            },
-                                            onDragCancel = {
-                                                draggingHabitId = null
-                                                if (dragChangedOrder) {
-                                                    haptics.vibrate(HapticConfirmMs)
-                                                    latestOnDragFinished()
-                                                }
-                                                dragChangedOrder = false
-                                                lastHabitSwapHapticAtMs = 0L
-                                            }
-                                        )
-                                    }
-                                } else {
-                                    Modifier
-                                }
-                            ),
-                        onComplete = { onCompleteHabit(habit.id) },
-                        onEnterJiggle = onEnterJiggle,
-                        onDelete = { onDeleteHabit(habit.id) }
-                    )
-                }
-            }
-        }
-    }
-}
-
-private fun habitGridSlotOffset(
-    index: Int,
-    itemWidthPx: Float,
-    itemHeightPx: Int,
-    spacingPx: Int
-): Offset {
-    val column = index % 2
-    val row = index / 2
-    return Offset(
-        x = column * (itemWidthPx + spacingPx),
-        y = row * (itemHeightPx + spacingPx).toFloat()
-    )
-}
-
-private fun habitGridIndexForPosition(
-    centerX: Float,
-    centerY: Float,
-    itemCount: Int,
-    itemWidthPx: Float,
-    itemHeightPx: Int,
-    spacingPx: Int
-): Int {
-    if (itemCount <= 1) return 0
-
-    val columnWidth = itemWidthPx + spacingPx
-    val rowHeight = itemHeightPx + spacingPx
-    val column = (centerX / columnWidth).toInt().coerceIn(0, 1)
-    val row = (centerY / rowHeight).toInt().coerceAtLeast(0)
-    return (row * 2 + column).coerceIn(0, itemCount - 1)
 }
 
 internal fun <T> moveListItem(
@@ -2223,267 +1809,10 @@ private fun SectionHeader(
 }
 
 
-private val HabitChargePattern = listOf(
-    0L to 2L,
-    80L to 3L,
-    160L to 3L,
-    240L to 4L,
-    320L to 4L,
-    400L to 4L,
-    480L to 5L,
-    560L to 5L,
-    640L to 5L,
-    720L to 6L,
-    800L to 6L,
-    880L to 6L,
-    960L to 7L,
-    1040L to 7L,
-    1120L to 7L
-)
-
-@OptIn(ExperimentalFoundationApi::class)
-@Composable
-private fun rememberHabitJiggleRotation(enabled: Boolean): Float {
-    if (!enabled) return 0f
-
-    val jiggleTransition = rememberInfiniteTransition(label = "habitJiggle")
-    val jiggleRotation by jiggleTransition.animateFloat(
-        initialValue = -1.2f,
-        targetValue = 1.2f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 120, easing = LinearEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "habitJiggleRotation"
-    )
-    return jiggleRotation
-}
-
-@OptIn(ExperimentalFoundationApi::class)
-@Composable
-private fun HabitChip(
-    task: KudoTask,
-    palette: KudoPalette,
-    finalMultiplier: Float,
-    isJiggleMode: Boolean,
-    isDragging: Boolean,
-    jiggleRotation: Float,
-    modifier: Modifier = Modifier,
-    onComplete: () -> Unit,
-    onEnterJiggle: () -> Unit,
-    onDelete: () -> Unit
-) {
-    val haptics = rememberKudoHaptics()
-    val scope = rememberCoroutineScope()
-    val shape = RoundedCornerShape(16.dp)
-    val completedToday = remember(task.last) { isToday(task.last) }
-    val value = remember(task.valAmount, finalMultiplier) {
-        (task.valAmount * finalMultiplier).toInt()
-    }
-    var isCharging by remember(task.id) { mutableStateOf(false) }
-    var chargeJob by remember(task.id) { mutableStateOf<Job?>(null) }
-    val chargeProgress = remember(task.id) { Animatable(0f) }
-    val dragScale by animateFloatAsState(
-        targetValue = if (isDragging) 1.035f else 1f,
-        animationSpec = spring(
-            dampingRatio = 0.82f,
-            stiffness = 760f
-        ),
-        label = "habitDragScale"
-    )
-    val dragAlpha by animateFloatAsState(
-        targetValue = if (isDragging) 0.97f else 1f,
-        animationSpec = spring(
-            dampingRatio = 0.9f,
-            stiffness = 760f
-        ),
-        label = "habitDragAlpha"
-    )
-    val dragShadow by animateDpAsState(
-        targetValue = if (isDragging) 14.dp else 0.dp,
-        animationSpec = spring(
-            dampingRatio = 0.84f,
-            stiffness = 760f
-        ),
-        label = "habitDragShadow"
-    )
-
-    fun cancelCharge(withReleaseHaptic: Boolean = true) {
-        chargeJob?.cancel()
-        chargeJob = null
-        if (isCharging && withReleaseHaptic) {
-            haptics.vibrate(4)
-        }
-        isCharging = false
-        scope.launch {
-            chargeProgress.stop()
-            chargeProgress.animateTo(
-                targetValue = 0f,
-                animationSpec = tween(durationMillis = 110, easing = LinearEasing)
-            )
-        }
-    }
-
-    LaunchedEffect(isJiggleMode) {
-        if (isJiggleMode) {
-            cancelCharge(withReleaseHaptic = false)
-        }
-    }
-
-    DisposableEffect(task.id) {
-        onDispose {
-            chargeJob?.cancel()
-        }
-    }
-
-    fun startCharge() {
-        if (isJiggleMode) {
-            return
-        }
-        if (isCharging) {
-            cancelCharge()
-            return
-        }
-
-        isCharging = true
-        chargeJob = scope.launch {
-            chargeProgress.stop()
-            chargeProgress.snapTo(0f)
-            val progressJob = launch {
-                chargeProgress.animateTo(
-                    targetValue = 1f,
-                    animationSpec = tween(durationMillis = 1500, easing = LinearEasing)
-                )
-            }
-            var previous = 0L
-            HabitChargePattern.forEach { (time, duration) ->
-                delay(time - previous)
-                previous = time
-                if (isActive) {
-                    haptics.vibrate(duration)
-                }
-            }
-            delay(1500L - previous)
-            if (isActive) {
-                progressJob.cancel()
-                chargeProgress.snapTo(1f)
-                onComplete()
-                haptics.vibrate(25)
-                isCharging = false
-                chargeJob = null
-                delay(90)
-                chargeProgress.snapTo(0f)
-            }
-        }
-    }
-
-    Box(
-        modifier = modifier
-            .fillMaxWidth()
-            .shadow(dragShadow, shape, clip = false)
-            .clip(shape)
-            .border(1.dp, palette.line, shape)
-            .zIndex(if (isDragging) 1f else 0f)
-            .graphicsLayer {
-                rotationZ = if (isJiggleMode && !isDragging) jiggleRotation else 0f
-                scaleX = dragScale
-                scaleY = dragScale
-                alpha = dragAlpha
-            }
-            .combinedClickable(
-                enabled = !isJiggleMode,
-                onClick = { startCharge() },
-                onLongClick = {
-                    if (!isJiggleMode) {
-                        cancelCharge(withReleaseHaptic = false)
-                        haptics.vibrate(25)
-                        onEnterJiggle()
-                    }
-                }
-            )
-    ) {
-        Box(
-            modifier = Modifier
-                .matchParentSize()
-                .background(palette.card)
-                .drawBehind {
-                    drawRect(
-                        color = palette.greenBg,
-                        size = androidx.compose.ui.geometry.Size(
-                            width = size.width * chargeProgress.value,
-                            height = size.height
-                        )
-                    )
-                }
-        )
-        AnimatedVisibility(
-            visible = isJiggleMode,
-            modifier = Modifier
-                .align(Alignment.TopEnd)
-                .padding(top = 4.dp, end = 4.dp)
-                .zIndex(2f)
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(22.dp)
-                    .clip(RoundedCornerShape(11.dp))
-                    .background(Color(0xFFCF6679))
-                    .clickable { onDelete() },
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = "×",
-                    color = Color.White,
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.Bold
-                )
-            }
-        }
-        Row(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(horizontal = 16.dp, vertical = 14.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Column(
-                modifier = Modifier.weight(1f)
-            ) {
-                Text(
-                    text = task.title,
-                    color = palette.textMain,
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    maxLines = 1
-                )
-                Spacer(modifier = Modifier.height(2.dp))
-                Text(
-                    text = "+${'$'}" + value,
-                    color = palette.green,
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Bold
-                )
-            }
-            Spacer(modifier = Modifier.width(8.dp))
-            Text(
-                text = if (completedToday) "x${task.count}" else if (isCharging) "..." else "Go",
-                color = if (completedToday) palette.background else palette.textSub,
-                fontSize = 12.sp,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(if (completedToday) palette.green else palette.line)
-                    .padding(horizontal = 8.dp, vertical = 4.dp)
-            )
-        }
-    }
-}
-
 @Composable
 private fun TaskRow(
     task: KudoTask,
     palette: KudoPalette,
-    isActive: Boolean = false,
     isDragging: Boolean = false,
     modifier: Modifier = Modifier,
     reorderModifier: Modifier = Modifier,
@@ -3000,6 +2329,21 @@ private fun TrendChart(
     val expense = remember(logs) { buildTrend(logs, positive = false) }
     val haptics = rememberKudoHaptics()
 
+    val todayNet = remember(logs) {
+        var plus = 0
+        var minus = 0
+        logs.forEach { log ->
+            if (isToday(log.timestamp)) {
+                if (log.value > 0) {
+                    plus += log.value
+                } else if (log.value < 0) {
+                    minus += -log.value
+                }
+            }
+        }
+        plus to minus
+    }
+
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -3012,12 +2356,42 @@ private fun TrendChart(
                 .fillMaxWidth()
                 .padding(horizontal = 12.dp, vertical = 16.dp)
         ) {
-            Text(
-                text = "TREND",
-                color = palette.textMain,
-                fontSize = 12.sp,
-                fontWeight = FontWeight.Bold
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "TREND",
+                    color = palette.textMain,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold
+                )
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "TODAY:",
+                        color = palette.textSub,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        letterSpacing = 0.5.sp
+                    )
+                    Text(
+                        text = "+${todayNet.first}",
+                        color = palette.green,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        text = "-${todayNet.second}",
+                        color = palette.orange,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
             Spacer(modifier = Modifier.height(12.dp))
             Canvas(
                 modifier = Modifier
@@ -3135,17 +2509,19 @@ private fun LogRow(
                 fontSize = 14.sp,
                 fontWeight = FontWeight.Bold
             )
-            IconButton(
-                onClick = {
-                    haptics.vibrate(HapticTickMs)
-                    onUndo()
+            if (log.undoable) {
+                IconButton(
+                    onClick = {
+                        haptics.vibrate(HapticTickMs)
+                        onUndo()
+                    }
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.ArrowBack,
+                        contentDescription = "Undo",
+                        tint = palette.textSub
+                    )
                 }
-            ) {
-                Icon(
-                    imageVector = Icons.Rounded.ArrowBack,
-                    contentDescription = "Undo",
-                    tint = palette.textSub
-                )
             }
         }
     }

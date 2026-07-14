@@ -46,9 +46,7 @@ class KudoReminderScheduler(
         previousReminderIds().forEach(::cancelReminder)
 
         val futureTasks = state.tasks.filter { task ->
-            task.type == KudoState.TYPE_TASK &&
-                task.dueAtEpochMillis != null &&
-                task.dueAtEpochMillis > now
+            task.dueAtEpochMillis != null && task.dueAtEpochMillis > now
         }
 
         futureTasks.forEach(::scheduleReminder)

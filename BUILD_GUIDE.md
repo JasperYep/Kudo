@@ -36,7 +36,6 @@
 - [ ] Task 列表
 
 #### Day 3: 完整功能
-- [ ] Habit 组件
 - [ ] Store 页面
 - [ ] Log 页面
 - [ ] Settings 页面

@@ -36,10 +36,7 @@ class KudoViewModel(application: Application) : AndroidViewModel(application) {
 
     private data class KudoViewState(
         val currentView: String = VIEW_TASKS,
-        val taskCreationTarget: TaskCreationTarget = TaskCreationTarget.TASK,
         val storeMode: Int = KudoState.STORE_ONCE,
-        val habitsCollapsed: Boolean = false,
-        val habitJiggleMode: Boolean = false,
         val settingsVisible: Boolean = false,
         val helpVisible: Boolean = false,
         val editingTarget: EditingTarget? = null,
@@ -60,10 +57,7 @@ class KudoViewModel(application: Application) : AndroidViewModel(application) {
             data = state,
             theme = theme,
             currentView = view.currentView,
-            taskCreationTarget = view.taskCreationTarget,
             storeMode = view.storeMode,
-            habitsCollapsed = view.habitsCollapsed,
-            isHabitJiggleMode = view.habitJiggleMode,
             isSettingsVisible = view.settingsVisible,
             isHelpVisible = view.helpVisible,
             editingTarget = view.editingTarget,
@@ -80,23 +74,7 @@ class KudoViewModel(application: Application) : AndroidViewModel(application) {
     )
 
     fun switchView(view: String) {
-        viewState.update {
-            it.copy(
-                currentView = view,
-                habitJiggleMode = if (view != VIEW_TASKS) false else it.habitJiggleMode
-            )
-        }
-    }
-
-    fun cycleTaskCreationTarget() {
-        viewState.update {
-            it.copy(
-                taskCreationTarget = when (it.taskCreationTarget) {
-                    TaskCreationTarget.TASK -> TaskCreationTarget.HABIT
-                    TaskCreationTarget.HABIT -> TaskCreationTarget.TASK
-                }
-            )
-        }
+        viewState.update { it.copy(currentView = view) }
     }
 
     fun toggleStoreMode() {
@@ -119,11 +97,10 @@ class KudoViewModel(application: Application) : AndroidViewModel(application) {
         val parsedValue = parseDashboardValue(valueInput)
         val createdId = System.currentTimeMillis()
         val isStoreInsert = current.currentView == VIEW_STORE
-        val isTaskInsertAnimation = !isStoreInsert && current.taskCreationTarget != TaskCreationTarget.HABIT
 
         if (isStoreInsert) {
             viewState.update { it.copy(recentStoreInsertId = createdId) }
-        } else if (isTaskInsertAnimation) {
+        } else {
             viewState.update { it.copy(recentTaskInsertId = createdId) }
         }
 
@@ -142,10 +119,6 @@ class KudoViewModel(application: Application) : AndroidViewModel(application) {
                         state = state,
                         title = trimmedTitle,
                         value = parsedValue,
-                        type = when (current.taskCreationTarget) {
-                            TaskCreationTarget.HABIT -> KudoState.TYPE_HABIT
-                            TaskCreationTarget.TASK -> KudoState.TYPE_TASK
-                        },
                         now = createdId
                     )
                 }
@@ -153,7 +126,7 @@ class KudoViewModel(application: Application) : AndroidViewModel(application) {
         }
         if (isStoreInsert) {
             clearRecentInsert(isStore = true, id = createdId)
-        } else if (isTaskInsertAnimation) {
+        } else {
             clearRecentInsert(isStore = false, id = createdId)
         }
         return true
@@ -194,11 +167,6 @@ class KudoViewModel(application: Application) : AndroidViewModel(application) {
 
     fun completeTask(id: Long) {
         viewModelScope.launch { repository.updateState { state -> KudoReducer.completeTask(state, id) } }
-        triggerUndoBanner()
-    }
-
-    fun completeHabit(id: Long) {
-        viewModelScope.launch { repository.updateState { state -> KudoReducer.completeHabit(state, id) } }
         triggerUndoBanner()
     }
 
@@ -280,7 +248,7 @@ class KudoViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun openSettings() {
-        viewState.update { it.copy(habitJiggleMode = false, settingsVisible = true, helpVisible = false) }
+        viewState.update { it.copy(settingsVisible = true, helpVisible = false) }
     }
 
     fun closeSettings() {
@@ -289,18 +257,6 @@ class KudoViewModel(application: Application) : AndroidViewModel(application) {
 
     fun toggleHelp() {
         viewState.update { it.copy(helpVisible = !it.helpVisible) }
-    }
-
-    fun toggleHabitsCollapsed() {
-        viewState.update { it.copy(habitsCollapsed = !it.habitsCollapsed) }
-    }
-
-    fun enterHabitJiggleMode() {
-        viewState.update { it.copy(habitJiggleMode = true) }
-    }
-
-    fun exitHabitJiggleMode() {
-        viewState.update { it.copy(habitJiggleMode = false) }
     }
 
     fun reorderTasks(orderedIds: List<Long>) {
@@ -318,16 +274,8 @@ class KudoViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch { repository.updateState { state -> KudoReducer.resetTaskOrder(state) } }
     }
 
-    fun reorderHabits(orderedIds: List<Long>) {
-        viewModelScope.launch { repository.updateState { state -> KudoReducer.reorderHabits(state, orderedIds) } }
-    }
-
     fun reorderStore(orderedIds: List<Long>) {
         viewModelScope.launch { repository.updateState { state -> KudoReducer.reorderStore(state, orderedIds) } }
-    }
-
-    fun deleteTaskItem(id: Long) {
-        viewModelScope.launch { repository.updateState { state -> KudoReducer.deleteTask(state, id) } }
     }
 
     fun setTheme(theme: String) {
@@ -358,7 +306,6 @@ class KudoViewModel(application: Application) : AndroidViewModel(application) {
         viewState.update {
             it.copy(
                 currentView = VIEW_TASKS,
-                taskCreationTarget = TaskCreationTarget.TASK,
                 recentTaskInsertId = lastCreatedId
             )
         }
@@ -425,7 +372,6 @@ class KudoViewModel(application: Application) : AndroidViewModel(application) {
         viewState.update {
             it.copy(
                 currentView = VIEW_TASKS,
-                taskCreationTarget = TaskCreationTarget.TASK,
                 recentTaskInsertId = lastCreatedId,
                 isImportPreviewVisible = false
             )
@@ -466,10 +412,7 @@ data class KudoUiState(
     val data: KudoState = KudoState(),
     val theme: String = KudoStateRepository.THEME_SYSTEM,
     val currentView: String = KudoViewModel.VIEW_TASKS,
-    val taskCreationTarget: TaskCreationTarget = TaskCreationTarget.TASK,
     val storeMode: Int = KudoState.STORE_ONCE,
-    val habitsCollapsed: Boolean = false,
-    val isHabitJiggleMode: Boolean = false,
     val isSettingsVisible: Boolean = false,
     val isHelpVisible: Boolean = false,
     val editingTarget: EditingTarget? = null,
@@ -485,8 +428,3 @@ data class EditingTarget(
     val kind: String,
     val id: Long
 )
-
-enum class TaskCreationTarget {
-    TASK,
-    HABIT
-}

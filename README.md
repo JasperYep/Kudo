@@ -9,7 +9,7 @@ A minimalist todo app with calm, restrained gamification.
 Most todo apps are good at collecting tasks.  
 Kudo is built to help you *move*.
 
-It brings tasks, habits, and rewards into one simple loop.
+It brings tasks and rewards into one simple loop.
 
 You do the work.  
 You earn the coins.  
@@ -19,7 +19,6 @@ Simple loop. Clear feedback.
 
 ## What You Can Do
 
-- Track recurring habits
 - Keep tasks in one ordered queue
 - Add tasks quickly with a pull-down composer
 - Time tasks when the value is unclear, or set a fixed coin value manually
@@ -46,7 +45,6 @@ They are a small system for making effort feel tangible.
 Kudo keeps the main task flow direct.
 
 - **Tasks** live in one queue you can reorder, with fixed or timer-based coin values
-- **Habits** are repeatable actions
 - **Store** holds personal rewards
 - **Log** records completed work and spending
 

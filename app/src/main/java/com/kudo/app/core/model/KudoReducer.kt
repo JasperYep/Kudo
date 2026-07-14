@@ -8,19 +8,10 @@ object KudoReducer {
         state: KudoState,
         title: String,
         value: Int,
-        type: Int,
         now: Long = System.currentTimeMillis()
     ): KudoState {
-        val nextOrder = if (
-            type == KudoState.TYPE_TASK &&
-            state.taskSortMode == KudoState.TASK_SORT_MANUAL
-        ) {
-            state.tasks
-                .asSequence()
-                .filter { it.type == KudoState.TYPE_TASK }
-                .maxOfOrNull(KudoTask::order)
-                ?.plus(1L)
-                ?: 0L
+        val nextOrder = if (state.taskSortMode == KudoState.TASK_SORT_MANUAL) {
+            state.tasks.maxOfOrNull(KudoTask::order)?.plus(1L) ?: 0L
         } else {
             now
         }
@@ -28,14 +19,9 @@ object KudoReducer {
             id = now,
             title = title,
             valAmount = value,
-            type = type,
-            count = 0,
-            last = 0L,
             order = nextOrder
         )
-        return KudoStateJson.sanitize(
-            state.copy(tasks = state.tasks + listOf(item))
-        )
+        return state.copy(tasks = state.tasks + item)
     }
 
     fun addImportedTasks(
@@ -46,12 +32,7 @@ object KudoReducer {
         if (drafts.isEmpty()) return state
 
         val firstOrder = if (state.taskSortMode == KudoState.TASK_SORT_MANUAL) {
-            state.tasks
-                .asSequence()
-                .filter { it.type == KudoState.TYPE_TASK }
-                .maxOfOrNull(KudoTask::order)
-                ?.plus(1L)
-                ?: 0L
+            state.tasks.maxOfOrNull(KudoTask::order)?.plus(1L) ?: 0L
         } else {
             now
         }
@@ -60,15 +41,10 @@ object KudoReducer {
                 id = now + index,
                 title = draft.title,
                 valAmount = draft.value,
-                type = KudoState.TYPE_TASK,
-                count = 0,
-                last = 0L,
                 order = firstOrder + index
             )
         }
-        return KudoStateJson.sanitize(
-            state.copy(tasks = state.tasks + imported)
-        )
+        return state.copy(tasks = state.tasks + imported)
     }
 
     fun addStoreItem(
@@ -87,21 +63,19 @@ object KudoReducer {
         return state.copy(store = listOf(item) + state.store)
     }
 
-
     fun toggleTimer(state: KudoState, id: Long, now: Long = System.currentTimeMillis()): KudoState {
-        val task = state.tasks.firstOrNull { it.id == id } ?: return state
-        if (task.type != KudoState.TYPE_TASK) return state
+        if (state.tasks.none { it.id == id }) return state
 
         return state.copy(
-            tasks = state.tasks.map { t ->
+            tasks = state.tasks.map { current ->
                 when {
-                    t.id == id && t.isTimerRunning -> pauseTimer(t, now)
-                    t.id == id -> t.copy(
+                    current.id == id && current.isTimerRunning -> pauseTimer(current, now)
+                    current.id == id -> current.copy(
                         isTimerRunning = true,
                         lastTimerStart = now
                     )
-                    t.type == KudoState.TYPE_TASK && t.isTimerRunning -> pauseTimer(t, now)
-                    else -> t
+                    current.isTimerRunning -> pauseTimer(current, now)
+                    else -> current
                 }
             }
         )
@@ -118,8 +92,6 @@ object KudoReducer {
 
     fun completeTask(state: KudoState, id: Long, now: Long = System.currentTimeMillis()): KudoState {
         val task = state.tasks.firstOrNull { it.id == id } ?: return state
-        if (task.type != KudoState.TYPE_TASK) return state
-
         val runningElapsed = if (task.isTimerRunning) {
             (now - task.lastTimerStart).coerceAtLeast(0L)
         } else {
@@ -147,45 +119,11 @@ object KudoReducer {
             baseValue = baseValue,
             type = "task",
             taskId = task.id,
-            isHabit = false,
             itemData = KudoLogItemData.fromTask(completedSnapshot)
         )
 
         return grown.copy(
             tasks = grown.tasks.filterNot { it.id == id },
-            logs = listOf(log) + grown.logs
-        )
-    }
-
-    fun completeHabit(state: KudoState, id: Long, now: Long = System.currentTimeMillis()): KudoState {
-        val habit = state.tasks.firstOrNull { it.id == id } ?: return state
-        if (habit.type != KudoState.TYPE_HABIT) return state
-        val reward = floor(habit.valAmount * state.multiplier).toInt()
-        val rewarded = state.copy(coins = state.coins + reward)
-        val grown = processGrowth(rewarded, habit.valAmount)
-        val updatedTasks = grown.tasks.map { current ->
-            if (current.id == id) {
-                current.copy(
-                    last = now,
-                    count = current.count + 1
-                )
-            } else {
-                current
-            }
-        }
-        val snapshot = updatedTasks.firstOrNull { it.id == id } ?: habit
-        val log = KudoLogEntry(
-            timestamp = now,
-            text = habit.title,
-            value = reward,
-            baseValue = habit.valAmount,
-            type = "task",
-            taskId = habit.id,
-            isHabit = true,
-            itemData = KudoLogItemData.fromTask(snapshot)
-        )
-        return grown.copy(
-            tasks = updatedTasks,
             logs = listOf(log) + grown.logs
         )
     }
@@ -215,33 +153,22 @@ object KudoReducer {
 
     fun undoLog(state: KudoState, index: Int): KudoState {
         val log = state.logs.getOrNull(index) ?: return state
-        var nextState = state.copy(coins = state.coins - log.value)
+        if (!log.undoable) return state
 
+        var nextState = state.copy(coins = state.coins - log.value)
         log.itemData?.let { itemData ->
             when (log.type) {
                 "task" -> {
-                    val exists = nextState.tasks.firstOrNull { it.id == itemData.id }
-                    val snapshot = itemData.toTask()
-                    nextState = if (exists == null && itemData.type == KudoState.TYPE_TASK) {
-                        nextState.copy(tasks = nextState.tasks + snapshot)
-                    } else if (exists != null && log.isHabit) {
-                        nextState.copy(
-                            tasks = nextState.tasks.map { task ->
-                                if (task.id == itemData.id) {
-                                    task.copy(count = (task.count - 1).coerceAtLeast(0))
-                                } else {
-                                    task
-                                }
-                            }
-                        )
-                    } else {
-                        nextState
+                    if (nextState.tasks.none { it.id == itemData.id }) {
+                        nextState = nextState.copy(tasks = nextState.tasks + itemData.toTask())
                     }
                 }
 
                 "store" -> {
-                    val exists = nextState.store.firstOrNull { it.id == itemData.id }
-                    if (exists == null && itemData.type == KudoState.STORE_ONCE) {
+                    if (
+                        nextState.store.none { it.id == itemData.id } &&
+                        itemData.storeType == KudoState.STORE_ONCE
+                    ) {
                         nextState = nextState.copy(store = nextState.store + itemData.toStoreItem())
                     }
                 }
@@ -304,28 +231,17 @@ object KudoReducer {
         return state.copy(store = state.store.filterNot { it.id == id })
     }
 
-    fun reorderHabits(state: KudoState, orderedIds: List<Long>): KudoState {
-        return reorderTaskSubset(
-            state = state,
-            orderedIds = orderedIds
-        ) { task ->
-            task.type == KudoState.TYPE_HABIT
-        }
-    }
-
     fun reorderTasks(state: KudoState, orderedIds: List<Long>): KudoState {
-        return reorderTaskSubset(
-            state = state,
-            orderedIds = orderedIds
-        ) { task ->
-            task.type == KudoState.TYPE_TASK
-        }
+        val taskMap = state.tasks.associateBy { it.id }
+        val reordered = orderedIds.mapNotNull(taskMap::get)
+        val leftovers = state.tasks.filterNot { it.id in orderedIds.toSet() }
+        return state.copy(
+            tasks = (reordered + leftovers).mapIndexed { index, task -> task.copy(order = index.toLong()) }
+        )
     }
 
     fun resetTaskOrder(state: KudoState): KudoState {
         val orderedIds = state.tasks
-            .asSequence()
-            .filter { it.type == KudoState.TYPE_TASK }
             .sortedWith(
                 compareBy<KudoTask>(
                     { it.dueAtEpochMillis == null },
@@ -334,7 +250,6 @@ object KudoReducer {
                 )
             )
             .map(KudoTask::id)
-            .toList()
         if (orderedIds.isEmpty()) return state
 
         return setTaskSortMode(
@@ -348,34 +263,6 @@ object KudoReducer {
         val reordered = orderedIds.mapNotNull(itemMap::get)
         val leftovers = state.store.filterNot { it.id in orderedIds.toSet() }
         return state.copy(store = reordered + leftovers)
-    }
-
-    private fun reorderTaskSubset(
-        state: KudoState,
-        orderedIds: List<Long>,
-        predicate: (KudoTask) -> Boolean
-    ): KudoState {
-        val allTasks = state.tasks
-        val targetIndices = allTasks.mapIndexedNotNull { index, task -> if (predicate(task)) index else null }
-        if (targetIndices.isEmpty()) return state
-
-        val taskMap = allTasks.associateBy { it.id }
-        // Reorder the matched tasks according to orderedIds
-        val reorderedTargets = orderedIds.mapNotNull { taskMap[it] }.filter(predicate)
-        // Tasks that matched the predicate but weren't in orderedIds (fallback)
-        val remainingTargets = allTasks.filter(predicate).filterNot { it.id in orderedIds }
-        val newTargets = reorderedTargets + remainingTargets
-
-        val resultTasks = allTasks.toMutableList()
-        targetIndices.forEachIndexed { i, originalIndex ->
-            resultTasks[originalIndex] = newTargets[i]
-        }
-
-        return state.copy(
-            tasks = resultTasks.mapIndexed { index, task ->
-                task.copy(order = index.toLong())
-            }
-        )
     }
 
     private fun processGrowth(state: KudoState, value: Int): KudoState {
@@ -396,9 +283,4 @@ object KudoReducer {
             recentVals = updatedRecentVals
         )
     }
-
-
-
-
-
-    }
+}

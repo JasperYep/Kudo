@@ -15,7 +15,6 @@ class KudoReducerTimerTest {
                     id = 1L,
                     title = "A",
                     valAmount = 0,
-                    type = KudoState.TYPE_TASK,
                     isTimerRunning = true,
                     accumulatedTimeMillis = 30_000L,
                     lastTimerStart = 1_000L
@@ -23,8 +22,7 @@ class KudoReducerTimerTest {
                 KudoTask(
                     id = 2L,
                     title = "B",
-                    valAmount = 0,
-                    type = KudoState.TYPE_TASK
+                    valAmount = 0
                 )
             )
         )
@@ -38,7 +36,7 @@ class KudoReducerTimerTest {
         assertEquals(0L, taskA.lastTimerStart)
         assertTrue(taskB.isTimerRunning)
         assertEquals(61_000L, taskB.lastTimerStart)
-        assertEquals(1, updated.tasks.count { it.type == KudoState.TYPE_TASK && it.isTimerRunning })
+        assertEquals(1, updated.tasks.count { it.isTimerRunning })
     }
 
     @Test
@@ -49,7 +47,6 @@ class KudoReducerTimerTest {
                     id = 1L,
                     title = "A",
                     valAmount = 0,
-                    type = KudoState.TYPE_TASK,
                     isTimerRunning = true,
                     lastTimerStart = 1_000L
                 )
@@ -61,6 +58,6 @@ class KudoReducerTimerTest {
 
         assertFalse(task.isTimerRunning)
         assertEquals(30_000L, task.accumulatedTimeMillis)
-        assertEquals(0, updated.tasks.count { it.type == KudoState.TYPE_TASK && it.isTimerRunning })
+        assertEquals(0, updated.tasks.count { it.isTimerRunning })
     }
 }

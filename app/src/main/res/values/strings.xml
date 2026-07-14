@@ -22,7 +22,6 @@
     <string name="mode_store">STORE</string>
     
     <!-- Sections -->
-    <string name="habits">Habits</string>
     <string name="focus">Focus</string>
     <string name="inbox">Inbox</string>
     <string name="store">Store</string>
@@ -31,21 +30,18 @@
     
     <!-- Task Types -->
     <string name="task">Task</string>
-    <string name="habit">Habit</string>
     
     <!-- Messages -->
     <string name="confirm_delete">Delete this item?</string>
     <string name="confirm_purchase">Purchase this reward?</string>
     <string name="not_enough_coins">Not enough coins!</string>
     <string name="purchase_success">Purchase successful!</string>
-    <string name="habit_complete">Habit complete!</string>
     <string name="earn_coins">+$%1$d</string>
     
     <!-- Stats -->
     <string name="lifetime_high">Lifetime High</string>
     <string name="income_expense_ratio">Income/Expense</string>
     <string name="total_tasks">Total Tasks</string>
-    <string name="total_habits">Total Habits</string>
     
     <!-- Export/Import -->
     <string name="export_data">Export Data</string>

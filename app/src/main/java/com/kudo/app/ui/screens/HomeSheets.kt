@@ -413,15 +413,15 @@ private fun HelpContent(
             modifier = Modifier.fillMaxWidth(),
             textAlign = TextAlign.Center
         )
-        Text(text = "📌 任务分类", color = palette.textMain, fontWeight = FontWeight.Bold)
+        Text(text = "📌 任务", color = palette.textMain, fontWeight = FontWeight.Bold)
         Text(
-            text = "Habits：重复进行的日常项，每次点击完成即可充能并获得金币。\nTasks：有序队列，只有队首任务（高亮）可以完成。拖拽可调整顺序。",
+            text = "Tasks：有序队列，只有队首任务（高亮）可以完成。拖拽可调整顺序。",
             color = palette.textSub,
             fontSize = 13.sp
         )
         Text(text = "🖐️ 手势操作", color = palette.textMain, fontWeight = FontWeight.Bold)
         Text(
-            text = "添加：从顶部下划展开输入面板，提交后自动收起。\nHabits：点击完成，长按进入排序 / 删除模式。\nTasks：左右滑均可完成队首任务并获得金币，点击可编辑标题、金币值、截止日及子任务，长按拖动排序，长按 TASKS 标签可恢复默认日期排序。\nStore：右滑消费金币购买奖励，点击编辑内容，长按排序。",
+            text = "添加：从顶部下划展开输入面板，提交后自动收起。\nTasks：左右滑均可完成队首任务并获得金币，点击可编辑标题、金币值、截止日及子任务，长按拖动排序，长按 TASKS 标签可恢复默认日期排序。\nStore：右滑消费金币购买奖励，点击编辑内容，长按排序。",
             color = palette.textSub,
             fontSize = 13.sp
         )
